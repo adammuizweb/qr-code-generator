@@ -8,7 +8,9 @@ QR Code Generator is a private Jyavani CMS plugin project that creates QR codes 
 - Error correction levels L, M, Q, and H
 - Configurable output size, quiet zone, foreground, and background colors
 - Optional gallery image in the QR center with adjustable sizing
+- Center-image backplate mode, custom color, and corner radius controls
 - Debounced live preview while editing
+- Built-in visual presets and browser-local custom presets
 - Live accessible preview
 - PNG and SVG downloads
 - UTF-8 payload support
@@ -19,12 +21,14 @@ QR Code Generator is a private Jyavani CMS plugin project that creates QR codes 
 
 Generation is client-side. The plugin does not store payloads, add database tables, call external APIs, or add public frontend routes. The only network requests are ordinary Jyavani static asset requests from the same site.
 
+Custom presets are optional and stored in the current browser. They contain visual settings only; payloads and selected image URLs are excluded.
+
 ## Development
 
 ```bash
 php tests/contract.php
 node tests/generator.test.js
-php tools/build-package.php /tmp/qr-code-generator-0.2.0.zip
+php tools/build-package.php /tmp/qr-code-generator-0.3.0.zip
 ```
 
 Run PHP and JavaScript syntax checks before packaging:

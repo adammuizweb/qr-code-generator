@@ -79,6 +79,35 @@
     return (light + 0.05) / (dark + 0.05);
   }
 
+  function assessContrast(foreground, background) {
+    var ratio = contrastRatio(foreground, background);
+    var inverted = ratio >= 3 && relativeLuminance(foreground) > relativeLuminance(background);
+    return {
+      ratio: ratio,
+      inverted: inverted,
+      level: inverted || ratio < 3 ? 'warning' : (ratio < 4.5 ? 'acceptable' : 'good')
+    };
+  }
+
+  function sanitizeVisualPreset(value) {
+    value = value && typeof value === 'object' ? value : {};
+    var errorLevel = ['L', 'M', 'Q', 'H'].indexOf(value.errorLevel) >= 0 ? value.errorLevel : 'M';
+    var outputSize = [256, 512, 768, 1024].indexOf(Number(value.outputSize)) >= 0 ? Number(value.outputSize) : 512;
+    var quietZone = [4, 6, 8].indexOf(Number(value.quietZone)) >= 0 ? Number(value.quietZone) : 4;
+    var backgroundMode = ['match', 'custom', 'transparent'].indexOf(value.imageBackgroundMode) >= 0 ? value.imageBackgroundMode : 'match';
+    return {
+      foreground: parseHex(value.foreground) ? String(value.foreground).toLowerCase() : '#0f172a',
+      background: parseHex(value.background) ? String(value.background).toLowerCase() : '#ffffff',
+      errorLevel: errorLevel,
+      outputSize: outputSize,
+      quietZone: quietZone,
+      imageScale: Math.max(10, Math.min(25, Number(value.imageScale) || 18)),
+      imageBackgroundMode: backgroundMode,
+      imageBackgroundColor: parseHex(value.imageBackgroundColor) ? String(value.imageBackgroundColor).toLowerCase() : '#ffffff',
+      imageRadius: Math.max(0, Math.min(50, Number(value.imageRadius) || 0))
+    };
+  }
+
   function normalizeCenterImageUrl(value, baseUrl, expectedOrigin) {
     var raw = String(value || '').trim();
     if (!raw) return '';
@@ -121,14 +150,27 @@
     };
   }
 
+  function containedImageRect(width, height, x, y, size) {
+    width = Number(width);
+    height = Number(height);
+    if (!(width > 0) || !(height > 0)) return {x: x, y: y, width: size, height: size};
+    var scale = Math.min(size / width, size / height);
+    var drawWidth = width * scale;
+    var drawHeight = height * scale;
+    return {x: x + (size - drawWidth) / 2, y: y + (size - drawHeight) / 2, width: drawWidth, height: drawHeight};
+  }
+
   var api = {
     escapeWifi: escapeWifi,
     normalizeUrl: normalizeUrl,
     buildPayload: buildPayload,
     contrastRatio: contrastRatio,
+    assessContrast: assessContrast,
+    sanitizeVisualPreset: sanitizeVisualPreset,
     normalizeCenterImageUrl: normalizeCenterImageUrl,
     centerImageGeometry: centerImageGeometry,
-    qrRasterLayout: qrRasterLayout
+    qrRasterLayout: qrRasterLayout,
+    containedImageRect: containedImageRect
   };
   global.JyavaniQrGenerator = api;
 
@@ -159,6 +201,14 @@
     var margin = document.getElementById('jqrg-margin');
     var foreground = document.getElementById('jqrg-foreground');
     var background = document.getElementById('jqrg-background');
+    var contrastBox = document.getElementById('jqrg-contrast');
+    var contrastRatioOutput = document.getElementById('jqrg-contrast-ratio');
+    var contrastLabel = document.getElementById('jqrg-contrast-label');
+    var presetSelect = document.getElementById('jqrg-preset-select');
+    var customPresetGroup = document.getElementById('jqrg-custom-presets');
+    var presetDelete = document.getElementById('jqrg-preset-delete');
+    var presetName = document.getElementById('jqrg-preset-name');
+    var presetSave = document.getElementById('jqrg-preset-save');
     var canvas = document.getElementById('jqrg-canvas');
     var placeholder = document.getElementById('jqrg-placeholder');
     var status = document.getElementById('jqrg-status');
@@ -174,15 +224,26 @@
     var centerImageClear = document.getElementById('jqrg-center-image-clear');
     var centerImagePreview = document.getElementById('jqrg-center-image-preview');
     var centerImageThumbnail = document.getElementById('jqrg-center-image-thumbnail');
-    var centerImageSizeWrap = document.getElementById('jqrg-center-image-size-wrap');
+    var centerImageSettings = document.getElementById('jqrg-center-image-settings');
     var centerImageSize = document.getElementById('jqrg-center-image-size');
     var centerImageSizeOutput = document.getElementById('jqrg-center-image-size-output');
+    var centerImageBackgroundMode = document.getElementById('jqrg-center-image-background-mode');
+    var centerImageColorWrap = document.getElementById('jqrg-center-image-color-wrap');
+    var centerImageBackgroundColor = document.getElementById('jqrg-center-image-background-color');
+    var centerImageRadius = document.getElementById('jqrg-center-image-radius');
+    var centerImageRadiusOutput = document.getElementById('jqrg-center-image-radius-output');
     var currentPayload = '';
     var currentSvg = '';
     var generationSequence = 0;
     var generateTimer = null;
     var imageCache = null;
     var initialPayload = payloadOutput.textContent;
+    var presetStorageKey = 'jqrg.visualPresets.v1';
+    var builtInPresets = {
+      classic: sanitizeVisualPreset({foreground: '#0f172a', background: '#ffffff', errorLevel: 'M', outputSize: 512, quietZone: 4, imageScale: 18, imageBackgroundMode: 'match', imageRadius: 12}),
+      print: sanitizeVisualPreset({foreground: '#000000', background: '#ffffff', errorLevel: 'H', outputSize: 1024, quietZone: 6, imageScale: 16, imageBackgroundMode: 'match', imageRadius: 0}),
+      ocean: sanitizeVisualPreset({foreground: '#064e5b', background: '#ecfeff', errorLevel: 'Q', outputSize: 768, quietZone: 4, imageScale: 18, imageBackgroundMode: 'custom', imageBackgroundColor: '#ffffff', imageRadius: 24})
+    };
 
     function read(id) {
       var element = document.getElementById(id);
@@ -203,6 +264,101 @@
       return {text: read('jqrg-text')};
     }
 
+    function currentVisualSettings() {
+      return sanitizeVisualPreset({
+        foreground: foreground.value,
+        background: background.value,
+        errorLevel: errorLevel.value,
+        outputSize: size.value,
+        quietZone: margin.value,
+        imageScale: centerImageSize.value,
+        imageBackgroundMode: centerImageBackgroundMode.value,
+        imageBackgroundColor: centerImageBackgroundColor.value,
+        imageRadius: centerImageRadius.value
+      });
+    }
+
+    function updateCenterStyleVisibility() {
+      centerImageColorWrap.hidden = centerImageBackgroundMode.value !== 'custom';
+      centerImageSizeOutput.textContent = centerImageSize.value + '%';
+      centerImageRadiusOutput.textContent = centerImageRadius.value + '%';
+    }
+
+    function updateContrastFeedback() {
+      var assessment = assessContrast(foreground.value, background.value);
+      contrastBox.classList.remove('is-good', 'is-acceptable', 'is-warning');
+      contrastBox.classList.add('is-' + assessment.level);
+      contrastRatioOutput.textContent = assessment.ratio.toFixed(2) + ':1';
+      if (assessment.inverted) contrastLabel.textContent = messages.contrastInverted || 'Light modules on a dark background may not work in every scanner.';
+      else if (assessment.level === 'warning') contrastLabel.textContent = messages.contrastLow || 'Low contrast may be difficult to scan.';
+      else if (assessment.level === 'acceptable') contrastLabel.textContent = messages.contrastAcceptable || 'Usable contrast';
+      else contrastLabel.textContent = messages.contrastGood || 'Strong contrast';
+      return assessment;
+    }
+
+    function applyVisualSettings(settings) {
+      var safe = sanitizeVisualPreset(settings);
+      foreground.value = safe.foreground;
+      background.value = safe.background;
+      errorLevel.value = safe.errorLevel;
+      size.value = String(safe.outputSize);
+      margin.value = String(safe.quietZone);
+      centerImageSize.value = String(safe.imageScale);
+      centerImageBackgroundMode.value = safe.imageBackgroundMode;
+      centerImageBackgroundColor.value = safe.imageBackgroundColor;
+      centerImageRadius.value = String(safe.imageRadius);
+      updateCenterStyleVisibility();
+      updateContrastFeedback();
+    }
+
+    function readCustomPresets() {
+      try {
+        var decoded = JSON.parse(global.localStorage.getItem(presetStorageKey) || '[]');
+        if (!Array.isArray(decoded)) return [];
+        return decoded.slice(0, 20).filter(function (item) {
+          return item && typeof item.id === 'string' && typeof item.name === 'string' && item.name.trim() !== '';
+        }).map(function (item) {
+          return {id: item.id.slice(0, 80), name: item.name.trim().slice(0, 40), settings: sanitizeVisualPreset(item.settings)};
+        });
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function writeCustomPresets(items) {
+      try {
+        global.localStorage.setItem(presetStorageKey, JSON.stringify(items.slice(0, 20)));
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    function renderCustomPresets(selectedValue) {
+      while (customPresetGroup.firstChild) customPresetGroup.removeChild(customPresetGroup.firstChild);
+      readCustomPresets().forEach(function (item) {
+        var option = document.createElement('option');
+        option.value = 'custom:' + item.id;
+        option.textContent = item.name;
+        customPresetGroup.appendChild(option);
+      });
+      if (selectedValue) presetSelect.value = selectedValue;
+      presetDelete.disabled = !presetSelect.value.startsWith('custom:');
+    }
+
+    function presetStatus(key, fallback, error) {
+      status.textContent = messages[key] || fallback;
+      status.classList.toggle('is-error', error === true);
+      status.classList.remove('is-warning');
+    }
+
+    function markPresetModified(target) {
+      var visualControls = [foreground, background, errorLevel, size, margin, centerImageSize, centerImageBackgroundMode, centerImageBackgroundColor, centerImageRadius];
+      if (visualControls.indexOf(target) < 0) return;
+      presetSelect.value = '';
+      presetDelete.disabled = true;
+    }
+
     function escapeXml(value) {
       return String(value).replace(/[&<>"']/g, function (character) {
         return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;'}[character];
@@ -221,8 +377,12 @@
       var overlay = '';
       if (centerAsset) {
         var geometry = centerImageGeometry(total, centerAsset.percentage);
-        overlay = '<rect x="' + geometry.backingOffset + '" y="' + geometry.backingOffset + '" width="' + geometry.backingSize + '" height="' + geometry.backingSize + '" rx="' + geometry.radius + '" fill="' + escapeXml(light) + '"/>' +
-          '<image href="' + escapeXml(centerAsset.dataUrl) + '" x="' + geometry.imageOffset + '" y="' + geometry.imageOffset + '" width="' + geometry.imageSize + '" height="' + geometry.imageSize + '" preserveAspectRatio="xMidYMid meet" image-rendering="auto"/>';
+        var imageRect = containedImageRect(centerAsset.width, centerAsset.height, geometry.imageOffset, geometry.imageOffset, geometry.imageSize);
+        var radius = Math.min(imageRect.width, imageRect.height) * centerAsset.radius / 100;
+        var backingRadius = geometry.backingSize * centerAsset.radius / 100;
+        var backplate = centerAsset.backgroundMode === 'transparent' ? '' : '<rect x="' + geometry.backingOffset + '" y="' + geometry.backingOffset + '" width="' + geometry.backingSize + '" height="' + geometry.backingSize + '" rx="' + backingRadius + '" fill="' + escapeXml(centerAsset.backgroundColor) + '"/>';
+        overlay = '<defs><clipPath id="jqrg-center-clip"><rect x="' + imageRect.x + '" y="' + imageRect.y + '" width="' + imageRect.width + '" height="' + imageRect.height + '" rx="' + radius + '"/></clipPath></defs>' + backplate +
+          '<image href="' + escapeXml(centerAsset.dataUrl) + '" x="' + imageRect.x + '" y="' + imageRect.y + '" width="' + imageRect.width + '" height="' + imageRect.height + '" image-rendering="auto" clip-path="url(#jqrg-center-clip)"/>';
       }
       return '<svg xmlns="http://www.w3.org/2000/svg" width="' + outputSize + '" height="' + outputSize + '" viewBox="0 0 ' + total + ' ' + total + '" shape-rendering="crispEdges" role="img" aria-label="QR code">' +
         '<rect width="' + total + '" height="' + total + '" fill="' + escapeXml(light) + '"/>' +
@@ -240,13 +400,11 @@
       context.closePath();
     }
 
-    function drawContainedImage(context, image, x, y, size) {
+    function drawContainedImage(context, image, rect) {
       var width = image.naturalWidth || image.width;
       var height = image.naturalHeight || image.height;
-      var scale = Math.min(size / width, size / height);
-      var drawWidth = width * scale;
-      var drawHeight = height * scale;
-      context.drawImage(image, x + (size - drawWidth) / 2, y + (size - drawHeight) / 2, drawWidth, drawHeight);
+      if (!width || !height) throw new Error('imageLoadFailed');
+      context.drawImage(image, rect.x, rect.y, rect.width, rect.height);
     }
 
     function drawCanvas(qr, outputSize, quietZone, dark, light, centerAsset) {
@@ -272,10 +430,17 @@
       }
       if (centerAsset) {
         var geometry = centerImageGeometry(layout.rasterSize, centerAsset.percentage);
-        context.fillStyle = light;
-        roundedRect(context, layout.offset + geometry.backingOffset, layout.offset + geometry.backingOffset, geometry.backingSize, geometry.backingSize, geometry.radius);
-        context.fill();
-        drawContainedImage(context, centerAsset.image, layout.offset + geometry.imageOffset, layout.offset + geometry.imageOffset, geometry.imageSize);
+        if (centerAsset.backgroundMode !== 'transparent') {
+          context.fillStyle = centerAsset.backgroundColor;
+          roundedRect(context, layout.offset + geometry.backingOffset, layout.offset + geometry.backingOffset, geometry.backingSize, geometry.backingSize, geometry.backingSize * centerAsset.radius / 100);
+          context.fill();
+        }
+        var imageRect = containedImageRect(centerAsset.image.naturalWidth || centerAsset.image.width, centerAsset.image.naturalHeight || centerAsset.image.height, layout.offset + geometry.imageOffset, layout.offset + geometry.imageOffset, geometry.imageSize);
+        context.save();
+        roundedRect(context, imageRect.x, imageRect.y, imageRect.width, imageRect.height, Math.min(imageRect.width, imageRect.height) * centerAsset.radius / 100);
+        context.clip();
+        drawContainedImage(context, centerAsset.image, imageRect);
+        context.restore();
       }
     }
 
@@ -325,6 +490,7 @@
       payloadOutput.textContent = messages[key] || messages.overflow || key;
       status.textContent = messages[key] || messages.overflow || key;
       status.classList.add('is-error');
+      status.classList.remove('is-warning');
     }
 
     function markUpdating() {
@@ -336,7 +502,7 @@
       copyButton.disabled = true;
       payloadOutput.textContent = initialPayload;
       status.textContent = messages.updating || 'Updating preview...';
-      status.classList.remove('is-error');
+      status.classList.remove('is-error', 'is-warning');
     }
 
     function scheduleGenerate(delay) {
@@ -348,13 +514,12 @@
     async function generate() {
       clearTimeout(generateTimer);
       var requestSequence = ++generationSequence;
-      status.classList.remove('is-error');
+      status.classList.remove('is-error', 'is-warning');
       try {
         var payload = buildPayload(type.value, valuesForType(type.value));
         var dark = foreground.value;
         var light = background.value;
-        if (contrastRatio(dark, light) < 3) throw new Error('lowContrast');
-        if (relativeLuminance(dark) >= relativeLuminance(light)) throw new Error('reversePolarity');
+        var contrast = updateContrastFeedback();
         var hasCenterImage = centerImageUrl.value !== '';
         if (hasCenterImage) errorLevel.value = 'H';
         var qr = global.qrcode(0, errorLevel.value);
@@ -366,8 +531,18 @@
         var centerAsset = null;
         if (hasCenterImage) {
           var safeImageUrl = normalizeCenterImageUrl(centerImageUrl.value, global.location.href, global.location.origin);
-          centerAsset = await loadCenterImage(safeImageUrl);
-          centerAsset.percentage = parseInt(centerImageSize.value, 10) || 18;
+          var loadedImage = await loadCenterImage(safeImageUrl);
+          var backgroundMode = centerImageBackgroundMode.value;
+          centerAsset = {
+            image: loadedImage.image,
+            dataUrl: loadedImage.dataUrl,
+            width: loadedImage.image.naturalWidth || loadedImage.image.width,
+            height: loadedImage.image.naturalHeight || loadedImage.image.height,
+            percentage: parseInt(centerImageSize.value, 10) || 18,
+            backgroundMode: backgroundMode,
+            backgroundColor: backgroundMode === 'custom' ? centerImageBackgroundColor.value : light,
+            radius: Math.max(0, Math.min(50, parseInt(centerImageRadius.value, 10) || 0))
+          };
         }
         if (requestSequence !== generationSequence) return;
         drawCanvas(qr, outputSize, quietZone, dark, light, centerAsset);
@@ -379,8 +554,17 @@
         svgButton.disabled = false;
         copyButton.disabled = false;
         payloadOutput.textContent = type.value === 'wifi' ? (messages.wifiHidden || 'Wi-Fi payload hidden. Use Copy to retrieve it.') : payload;
-        status.textContent = String(messages.ready || 'QR code ready: %d modules, %d characters.')
+        var readyMessage = String(messages.ready || 'QR code ready: %d modules, %d characters.')
           .replace('%d', String(qr.getModuleCount())).replace('%d', String(Array.from(payload).length));
+        if (contrast.inverted) {
+          status.textContent = (messages.contrastInverted || 'Light modules on a dark background may not work in every scanner.') + ' ' + readyMessage;
+          status.classList.add('is-warning');
+        } else if (contrast.level === 'warning') {
+          status.textContent = (messages.contrastLow || 'Low contrast may be difficult to scan.') + ' ' + readyMessage;
+          status.classList.add('is-warning');
+        } else {
+          status.textContent = readyMessage;
+        }
       } catch (error) {
         if (requestSequence !== generationSequence) return;
         var key = error && error.message ? error.message : 'overflow';
@@ -418,6 +602,53 @@
     centerImageSize.addEventListener('input', function () {
       centerImageSizeOutput.textContent = centerImageSize.value + '%';
     });
+    centerImageRadius.addEventListener('input', function () {
+      centerImageRadiusOutput.textContent = centerImageRadius.value + '%';
+    });
+    centerImageBackgroundMode.addEventListener('change', updateCenterStyleVisibility);
+    presetSelect.addEventListener('change', function () {
+      var selected = presetSelect.value;
+      presetDelete.disabled = !selected.startsWith('custom:');
+      if (!selected) return;
+      if (selected.startsWith('builtin:')) {
+        applyVisualSettings(builtInPresets[selected.slice(8)] || builtInPresets.classic);
+      } else if (selected.startsWith('custom:')) {
+        var id = selected.slice(7);
+        var custom = readCustomPresets().find(function (item) { return item.id === id; });
+        if (custom) applyVisualSettings(custom.settings);
+      }
+      scheduleGenerate(0);
+    });
+    presetSave.addEventListener('click', function () {
+      var name = presetName.value.trim();
+      if (!name) {
+        presetStatus('presetNameRequired', 'Enter a name for the custom preset.', true);
+        presetName.focus();
+        return;
+      }
+      var items = readCustomPresets();
+      var id = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8);
+      items.unshift({id: id, name: name.slice(0, 40), settings: currentVisualSettings()});
+      if (!writeCustomPresets(items)) {
+        presetStatus('presetStorageFailed', 'This browser could not save the custom preset.', true);
+        return;
+      }
+      presetName.value = '';
+      renderCustomPresets('custom:' + id);
+      presetStatus('presetSaved', 'Custom preset saved in this browser.', false);
+    });
+    presetDelete.addEventListener('click', function () {
+      if (!presetSelect.value.startsWith('custom:')) return;
+      var id = presetSelect.value.slice(7);
+      var items = readCustomPresets().filter(function (item) { return item.id !== id; });
+      if (!writeCustomPresets(items)) {
+        presetStatus('presetStorageFailed', 'This browser could not save the custom preset.', true);
+        return;
+      }
+      presetSelect.value = '';
+      renderCustomPresets('');
+      presetStatus('presetDeleted', 'Custom preset deleted.', false);
+    });
     centerImageChoose.addEventListener('click', function () {
       if (typeof global.openMediaSelector !== 'function') {
         status.textContent = messages.pickerUnavailable || 'The media gallery is not available for this account.';
@@ -440,9 +671,10 @@
         centerImageUrl.value = safeUrl;
         centerImageThumbnail.src = safeUrl;
         centerImagePreview.hidden = false;
-        centerImageSizeWrap.hidden = false;
+        centerImageSettings.hidden = false;
         centerImageClear.disabled = false;
         errorLevel.value = 'H';
+        markPresetModified(errorLevel);
         scheduleGenerate(0);
       }).catch(function () {
         status.textContent = messages.pickerFailed || 'The media gallery could not be opened.';
@@ -454,16 +686,19 @@
       centerImageUrl.value = '';
       centerImageThumbnail.removeAttribute('src');
       centerImagePreview.hidden = true;
-      centerImageSizeWrap.hidden = true;
+      centerImageSettings.hidden = true;
       centerImageClear.disabled = true;
       scheduleGenerate(0);
     });
     root.addEventListener('input', function (event) {
-      if (event.target === centerImageUrl) return;
+      if (event.target === centerImageUrl || event.target === presetName) return;
+      markPresetModified(event.target);
+      if (event.target === foreground || event.target === background) updateContrastFeedback();
       scheduleGenerate();
     });
     root.addEventListener('change', function (event) {
-      if (event.target === centerImageUrl) return;
+      if (event.target === centerImageUrl || event.target === presetSelect || event.target === presetName) return;
+      markPresetModified(event.target);
       scheduleGenerate(0);
     });
     generateButton.addEventListener('click', function () { generate(); });
@@ -482,6 +717,9 @@
         status.textContent = messages.copyFailed || 'Could not copy the payload.';
       }
     });
+    updateCenterStyleVisibility();
+    updateContrastFeedback();
+    renderCustomPresets('');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, {once: true});

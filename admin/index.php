@@ -26,6 +26,14 @@ $messages = [
     'pickerUnavailable' => jqrg_t('The media gallery is not available for this account.'),
     'pickerFailed' => jqrg_t('The media gallery could not be opened.'),
     'updating' => jqrg_t('Updating preview...'),
+    'contrastGood' => jqrg_t('Strong contrast'),
+    'contrastAcceptable' => jqrg_t('Usable contrast'),
+    'contrastLow' => jqrg_t('Low contrast may be difficult to scan.'),
+    'contrastInverted' => jqrg_t('Light modules on a dark background may not work in every scanner.'),
+    'presetSaved' => jqrg_t('Custom preset saved in this browser.'),
+    'presetDeleted' => jqrg_t('Custom preset deleted.'),
+    'presetNameRequired' => jqrg_t('Enter a name for the custom preset.'),
+    'presetStorageFailed' => jqrg_t('This browser could not save the custom preset.'),
     'ready' => jqrg_t('QR code ready: %d modules, %d characters.'),
     'copied' => jqrg_t('Payload copied.'),
     'copyFailed' => jqrg_t('Could not copy the payload.'),
@@ -109,6 +117,26 @@ $messages = [
           <label><span><?= jqrg_h(jqrg_t('Foreground')) ?></span><input id="jqrg-foreground" type="color" value="#0f172a"></label>
           <label><span><?= jqrg_h(jqrg_t('Background')) ?></span><input id="jqrg-background" type="color" value="#ffffff"></label>
         </div>
+        <div class="jqrg-contrast" id="jqrg-contrast"><span><?= jqrg_h(jqrg_t('Contrast ratio')) ?></span><strong id="jqrg-contrast-ratio">17.85:1</strong><small id="jqrg-contrast-label"><?= jqrg_h(jqrg_t('Strong contrast')) ?></small></div>
+      </div>
+      <div class="jqrg-presets">
+        <div class="jqrg-presets__head"><strong><?= jqrg_h(jqrg_t('Visual presets')) ?></strong><small><?= jqrg_h(jqrg_t('Presets include only visual settings. Payloads and selected images are never saved.')) ?></small></div>
+        <div class="jqrg-presets__apply">
+          <select id="jqrg-preset-select" aria-label="<?= jqrg_h(jqrg_t('Visual preset')) ?>">
+            <option value=""><?= jqrg_h(jqrg_t('Current settings')) ?></option>
+            <optgroup label="<?= jqrg_h(jqrg_t('Built-in presets')) ?>">
+              <option value="builtin:classic"><?= jqrg_h(jqrg_t('Classic')) ?></option>
+              <option value="builtin:print"><?= jqrg_h(jqrg_t('Print ready')) ?></option>
+              <option value="builtin:ocean"><?= jqrg_h(jqrg_t('Ocean')) ?></option>
+            </optgroup>
+            <optgroup id="jqrg-custom-presets" label="<?= jqrg_h(jqrg_t('Custom presets')) ?>"></optgroup>
+          </select>
+          <button id="jqrg-preset-delete" type="button" disabled><?= jqrg_h(jqrg_t('Delete preset')) ?></button>
+        </div>
+        <div class="jqrg-presets__save">
+          <input id="jqrg-preset-name" type="text" maxlength="40" aria-label="<?= jqrg_h(jqrg_t('Custom preset name')) ?>" placeholder="<?= jqrg_h(jqrg_t('Custom preset name')) ?>">
+          <button id="jqrg-preset-save" type="button"><?= jqrg_h(jqrg_t('Save current settings')) ?></button>
+        </div>
       </div>
       <div class="jqrg-center-image">
         <div class="jqrg-center-image__head">
@@ -122,10 +150,12 @@ $messages = [
             <button id="jqrg-center-image-choose" type="button"><?= jqrg_h(jqrg_t('Choose from Gallery')) ?></button>
             <button id="jqrg-center-image-clear" type="button" disabled><?= jqrg_h(jqrg_t('Remove image')) ?></button>
           </div>
-          <label class="jqrg-center-image__size" id="jqrg-center-image-size-wrap" hidden>
-            <span><?= jqrg_h(jqrg_t('Image scale')) ?> <output id="jqrg-center-image-size-output" for="jqrg-center-image-size">18%</output></span>
-            <input id="jqrg-center-image-size" type="range" min="10" max="25" step="1" value="18">
-          </label>
+          <div class="jqrg-center-image__settings" id="jqrg-center-image-settings" hidden>
+            <label class="jqrg-center-image__size"><span><?= jqrg_h(jqrg_t('Image scale')) ?> <output id="jqrg-center-image-size-output" for="jqrg-center-image-size">18%</output></span><input id="jqrg-center-image-size" type="range" min="10" max="25" step="1" value="18"></label>
+            <label class="jqrg-field"><span><?= jqrg_h(jqrg_t('Image background')) ?></span><select id="jqrg-center-image-background-mode"><option value="match"><?= jqrg_h(jqrg_t('Match QR background')) ?></option><option value="custom"><?= jqrg_h(jqrg_t('Custom color')) ?></option><option value="transparent"><?= jqrg_h(jqrg_t('Transparent')) ?></option></select></label>
+            <label class="jqrg-center-image__color" id="jqrg-center-image-color-wrap" hidden><span><?= jqrg_h(jqrg_t('Background color')) ?></span><input id="jqrg-center-image-background-color" type="color" value="#ffffff"></label>
+            <label class="jqrg-center-image__size"><span><?= jqrg_h(jqrg_t('Corner radius')) ?> <output id="jqrg-center-image-radius-output" for="jqrg-center-image-radius">12%</output></span><input id="jqrg-center-image-radius" type="range" min="0" max="50" step="1" value="12"></label>
+          </div>
         </div>
       </div>
       <button class="jqrg-generate" id="jqrg-generate" type="button"><span aria-hidden="true">↻</span><?= jqrg_h(jqrg_t('Refresh preview')) ?></button>

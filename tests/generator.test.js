@@ -57,6 +57,26 @@ test('calculates useful color contrast ratios', () => {
   assert.equal(qr.contrastRatio('#000000', '#ffffff'), 21);
   assert.ok(qr.contrastRatio('#0f172a', '#ffffff') > 15);
   assert.ok(qr.contrastRatio('#777777', '#888888') < 3);
+  assert.equal(qr.assessContrast('#0f172a', '#ffffff').level, 'good');
+  assert.equal(qr.assessContrast('#777777', '#888888').level, 'warning');
+  assert.equal(qr.assessContrast('#ffffff', '#000000').inverted, true);
+  assert.equal(qr.assessContrast('#777777', '#777777').inverted, false);
+});
+
+test('sanitizes visual presets without payload or image data', () => {
+  const preset = qr.sanitizeVisualPreset({
+    foreground: '#123456', background: '#abcdef', errorLevel: 'H', outputSize: 1024,
+    quietZone: 8, imageScale: 25, imageBackgroundMode: 'transparent',
+    imageBackgroundColor: '#fedcba', imageRadius: 50, payload: 'secret', imageUrl: '/private/image'
+  });
+  assert.deepEqual(Object.keys(preset), [
+    'foreground', 'background', 'errorLevel', 'outputSize', 'quietZone', 'imageScale',
+    'imageBackgroundMode', 'imageBackgroundColor', 'imageRadius'
+  ]);
+  assert.equal(preset.imageBackgroundMode, 'transparent');
+  assert.equal(preset.imageRadius, 50);
+  assert.equal('payload' in preset, false);
+  assert.equal('imageUrl' in preset, false);
 });
 
 test('accepts only same-origin center images', () => {
@@ -87,6 +107,11 @@ test('sizes raster overlays against the rendered QR area', () => {
   const geometry = qr.centerImageGeometry(layout.rasterSize, 25);
   assert.equal(geometry.imageSize, 44.5);
   assert.ok(geometry.imageSize <= layout.rasterSize * 0.25);
+});
+
+test('fits and clips non-square center images by their visible bounds', () => {
+  assert.deepEqual(qr.containedImageRect(400, 200, 10, 20, 100), {x: 10, y: 45, width: 100, height: 50});
+  assert.deepEqual(qr.containedImageRect(200, 400, 10, 20, 100), {x: 35, y: 20, width: 50, height: 100});
 });
 
 test('encoder accepts UTF-8 ECI assignment 26', () => {

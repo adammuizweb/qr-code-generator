@@ -26,7 +26,7 @@ $manifest = json_decode($manifestJson, true, 512, JSON_THROW_ON_ERROR);
 $manifestObject = json_decode($manifestJson, false, 512, JSON_THROW_ON_ERROR);
 $check(($manifest['name'] ?? null) === 'qr-code-generator', 'plugin slug is stable');
 $check(($manifest['version'] ?? null) === JQRG_VERSION, 'manifest and runtime versions match');
-$check(($manifest['requires']['jyavani'] ?? null) === '>=2.3.116', 'minimum Core version provides the isolated media-selector context');
+$check(($manifest['requires']['jyavani'] ?? null) === '>=2.3.126', 'minimum Core version provides the isolated media-selector context');
 $check(($manifestObject->requires->plugins ?? null) instanceof stdClass, 'plugin dependencies use an object map');
 
 $permission = $manifest['permissions'][0] ?? [];
@@ -76,8 +76,16 @@ $check(str_contains($adminSource, 'id="jqrg-center-image-choose"')
     && str_contains($browserSource, 'global.openMediaSelector({')
     && str_contains($browserSource, "selection_mode: 'immediate'")
     && str_contains($browserSource, 'scheduleGenerate'), 'Media Gallery image and live-preview controls are wired');
+$check(str_contains($adminSource, 'id="jqrg-center-image-background-mode"')
+    && str_contains($adminSource, 'id="jqrg-center-image-background-color"')
+    && str_contains($adminSource, 'id="jqrg-center-image-radius"'), 'center image background, transparency, and radius controls are rendered');
+$check(str_contains($adminSource, 'id="jqrg-preset-select"')
+    && str_contains($browserSource, "presetStorageKey = 'jqrg.visualPresets.v1'")
+    && substr_count($browserSource, 'global.localStorage.') === 2, 'visual presets use one bounded browser-local storage namespace');
 $check(!preg_match('/\b(?:fetch|XMLHttpRequest|sendBeacon|WebSocket)\s*\(/', $browserSource), 'browser runtime has no payload transport API');
-$check(!preg_match('/\b(?:localStorage|sessionStorage|indexedDB)\b/', $browserSource), 'browser runtime does not persist payloads');
+$check(!preg_match('/\b(?:sessionStorage|indexedDB)\b/', $browserSource)
+    && !str_contains($browserSource, 'localStorage.setItem(presetStorageKey, currentPayload)')
+    && !str_contains($browserSource, 'localStorage.setItem(presetStorageKey, centerImageUrl'), 'browser storage never receives payloads or selected image URLs');
 $check(!isset($manifest['migrations']) && !isset($manifest['frontend']), 'plugin declares no database migrations or frontend routes');
 
 $translationSources = [];
