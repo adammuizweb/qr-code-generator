@@ -25,6 +25,14 @@ $messages = [
     'copied' => jqrg_t('Payload copied.'),
     'copyFailed' => jqrg_t('Could not copy the payload.'),
     'wifiHidden' => jqrg_t('Wi-Fi payload hidden. Use Copy to retrieve it.'),
+    'typeHelp' => [
+        'text' => jqrg_t('Encode a note, instruction, identifier, or any other plain text.'),
+        'url' => jqrg_t('Open a website or web page when the code is scanned.'),
+        'email' => jqrg_t('Open a new email draft with an address, subject, and message.'),
+        'phone' => jqrg_t('Open the phone dialer with a number ready to call.'),
+        'sms' => jqrg_t('Open a new text message with a phone number and message.'),
+        'wifi' => jqrg_t('Let a compatible device join a Wi-Fi network without typing its details.'),
+    ],
     'downloadPng' => jqrg_t('Download PNG'),
     'downloadSvg' => jqrg_t('Download SVG'),
 ];
@@ -47,8 +55,8 @@ $messages = [
       <div class="jqrg-card__head"><span>01</span><div><h2 id="jqrg-content-title"><?= jqrg_h(jqrg_t('Compose payload')) ?></h2><p><?= jqrg_h(jqrg_t('Choose a format and fill only the information the scanner should receive.')) ?></p></div></div>
 
       <label class="jqrg-field">
-        <span><?= jqrg_h(jqrg_t('Payload type')) ?></span>
-        <select id="jqrg-type">
+        <span class="jqrg-label-row"><?= jqrg_h(jqrg_t('Payload type')) ?><span class="jqrg-tooltip" tabindex="0" aria-label="<?= jqrg_h(jqrg_t('More information')) ?>" aria-describedby="jqrg-tip-payload">?<span class="jqrg-tooltip__bubble" id="jqrg-tip-payload" role="tooltip"><?= jqrg_h(jqrg_t('Choose what should happen after someone scans the QR code. The selected type formats your information for compatible scanner apps.')) ?></span></span></span>
+        <select id="jqrg-type" aria-describedby="jqrg-type-help">
           <option value="text"><?= jqrg_h(jqrg_t('Plain text')) ?></option>
           <option value="url" selected><?= jqrg_h(jqrg_t('Website URL')) ?></option>
           <option value="email"><?= jqrg_h(jqrg_t('Email message')) ?></option>
@@ -56,6 +64,7 @@ $messages = [
           <option value="sms"><?= jqrg_h(jqrg_t('SMS message')) ?></option>
           <option value="wifi"><?= jqrg_h(jqrg_t('Wi-Fi network')) ?></option>
         </select>
+        <small class="jqrg-field-help" id="jqrg-type-help"><?= jqrg_h($messages['typeHelp']['url']) ?></small>
       </label>
 
       <div class="jqrg-payload-fields" data-jqrg-fields="text" hidden>
@@ -88,9 +97,9 @@ $messages = [
       <div class="jqrg-divider"></div>
       <div class="jqrg-card__head jqrg-card__head--compact"><span>02</span><div><h2><?= jqrg_h(jqrg_t('Shape the output')) ?></h2><p><?= jqrg_h(jqrg_t('Use strong contrast and keep the quiet zone for reliable scanning.')) ?></p></div></div>
       <div class="jqrg-options-grid">
-        <label class="jqrg-field"><span><?= jqrg_h(jqrg_t('Error correction')) ?></span><select id="jqrg-error"><option value="L">L - 7%</option><option value="M" selected>M - 15%</option><option value="Q">Q - 25%</option><option value="H">H - 30%</option></select></label>
-        <label class="jqrg-field"><span><?= jqrg_h(jqrg_t('Image size')) ?></span><select id="jqrg-size"><option value="256">256 px</option><option value="512" selected>512 px</option><option value="768">768 px</option><option value="1024">1024 px</option></select></label>
-        <label class="jqrg-field"><span><?= jqrg_h(jqrg_t('Quiet zone')) ?></span><select id="jqrg-margin"><option value="4" selected>4 modules</option><option value="6">6 modules</option><option value="8">8 modules</option></select></label>
+        <label class="jqrg-field"><span class="jqrg-label-row"><?= jqrg_h(jqrg_t('Error correction')) ?><span class="jqrg-tooltip" tabindex="0" aria-label="<?= jqrg_h(jqrg_t('More information')) ?>" aria-describedby="jqrg-tip-error">?<span class="jqrg-tooltip__bubble" id="jqrg-tip-error" role="tooltip"><?= jqrg_h(jqrg_t('Controls how much damage or obstruction the code can recover from. Higher levels improve resilience but create a denser code. M is a good default.')) ?></span></span></span><select id="jqrg-error"><option value="L">L - 7%</option><option value="M" selected>M - 15%</option><option value="Q">Q - 25%</option><option value="H">H - 30%</option></select></label>
+        <label class="jqrg-field"><span class="jqrg-label-row"><?= jqrg_h(jqrg_t('Image size')) ?><span class="jqrg-tooltip" tabindex="0" aria-label="<?= jqrg_h(jqrg_t('More information')) ?>" aria-describedby="jqrg-tip-size">?<span class="jqrg-tooltip__bubble" id="jqrg-tip-size" role="tooltip"><?= jqrg_h(jqrg_t('Sets the downloaded image dimensions. Use a larger size for print, posters, or high-resolution displays.')) ?></span></span></span><select id="jqrg-size"><option value="256">256 px</option><option value="512" selected>512 px</option><option value="768">768 px</option><option value="1024">1024 px</option></select></label>
+        <label class="jqrg-field"><span class="jqrg-label-row"><?= jqrg_h(jqrg_t('Quiet zone')) ?><span class="jqrg-tooltip" tabindex="0" aria-label="<?= jqrg_h(jqrg_t('More information')) ?>" aria-describedby="jqrg-tip-margin">?<span class="jqrg-tooltip__bubble" id="jqrg-tip-margin" role="tooltip"><?= jqrg_h(jqrg_t('Adds blank space around the code so scanners can detect its edges. Keep at least 4 modules; use more near busy backgrounds.')) ?></span></span></span><select id="jqrg-margin"><option value="4" selected>4 modules</option><option value="6">6 modules</option><option value="8">8 modules</option></select></label>
         <div class="jqrg-color-pair">
           <label><span><?= jqrg_h(jqrg_t('Foreground')) ?></span><input id="jqrg-foreground" type="color" value="#0f172a"></label>
           <label><span><?= jqrg_h(jqrg_t('Background')) ?></span><input id="jqrg-background" type="color" value="#ffffff"></label>

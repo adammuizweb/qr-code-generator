@@ -108,6 +108,7 @@
     try { messages = JSON.parse(messagesNode ? messagesNode.textContent : '{}'); } catch (error) {}
 
     var type = document.getElementById('jqrg-type');
+    var typeHelp = document.getElementById('jqrg-type-help');
     var errorLevel = document.getElementById('jqrg-error');
     var size = document.getElementById('jqrg-size');
     var margin = document.getElementById('jqrg-margin');
@@ -270,6 +271,7 @@
 
     type.addEventListener('change', function () {
       root.querySelectorAll('[data-jqrg-fields]').forEach(function (group) { group.hidden = group.dataset.jqrgFields !== type.value; });
+      if (typeHelp && messages.typeHelp) typeHelp.textContent = messages.typeHelp[type.value] || '';
       invalidate();
     });
     wifiSecurity.addEventListener('change', function () {

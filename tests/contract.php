@@ -68,6 +68,9 @@ $check(hash_file('sha256', $root . '/assets/vendor/qrcode.js') === '1d24c1c0679d
 $adminSource = (string)file_get_contents($root . '/admin/index.php');
 $browserSource = (string)file_get_contents($root . '/assets/js/admin.js');
 $check(str_contains($adminSource, "adiwira_require_permission(\$pdo, 'plugin.qr-code-generator.codes.generate', false)"), 'dashboard page enforces permission server-side');
+$check(substr_count($adminSource, 'role="tooltip"') === 4
+    && str_contains($adminSource, 'id="jqrg-type-help"')
+    && str_contains($browserSource, "messages.typeHelp[type.value]"), 'accessible tooltips and contextual payload guidance are wired');
 $check(!preg_match('/\b(?:fetch|XMLHttpRequest|sendBeacon|WebSocket)\s*\(/', $browserSource), 'browser runtime has no payload transport API');
 $check(!preg_match('/\b(?:localStorage|sessionStorage|indexedDB)\b/', $browserSource), 'browser runtime does not persist payloads');
 $check(!isset($manifest['migrations']) && !isset($manifest['frontend']), 'plugin declares no database migrations or frontend routes');

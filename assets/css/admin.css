@@ -78,6 +78,13 @@
 
 .jqrg-field { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .9rem; }
 .jqrg-field > span, .jqrg-color-pair label > span { color: var(--adam-muted, #526072); font-size: .72rem; font-weight: 700; letter-spacing: .02em; }
+.jqrg-label-row { display: inline-flex; align-items: center; gap: .4rem; }
+.jqrg-field-help { display: block; min-height: 2.8em; color: var(--adam-muted, #64748b); font-size: .72rem; font-weight: 450; line-height: 1.4; }
+.jqrg-tooltip { position: relative; display: inline-grid; place-items: center; width: 17px; height: 17px; flex: 0 0 17px; border: 1px solid currentColor; border-radius: 50%; color: var(--jqrg-cyan); font: 750 .65rem/1 ui-sans-serif, system-ui, sans-serif; cursor: help; outline: 0; }
+.jqrg-tooltip:focus { box-shadow: 0 0 0 3px rgba(14, 116, 144, .16); }
+.jqrg-tooltip__bubble { position: absolute; z-index: 20; left: 50%; bottom: calc(100% + 9px); width: min(260px, 72vw); padding: .7rem .75rem; border-radius: 9px; color: #f8fafc; background: #172033; box-shadow: 0 10px 28px rgba(15, 23, 42, .24); font-size: .7rem; font-weight: 500; letter-spacing: 0; line-height: 1.45; opacity: 0; pointer-events: none; transform: translate(-50%, 5px); transition: opacity .14s, transform .14s; }
+.jqrg-tooltip__bubble::after { content: ''; position: absolute; left: 50%; top: 100%; border: 6px solid transparent; border-top-color: #172033; transform: translateX(-50%); }
+.jqrg-tooltip:hover .jqrg-tooltip__bubble, .jqrg-tooltip:focus .jqrg-tooltip__bubble, .jqrg-tooltip:focus-within .jqrg-tooltip__bubble { opacity: 1; transform: translate(-50%, 0); }
 .jqrg-field input, .jqrg-field textarea, .jqrg-field select {
   width: 100%;
   min-height: 43px;
@@ -145,4 +152,7 @@ html.theme-dark .jqrg-payload-fields, html.theme-dark .jqrg-payload-readout, htm
   .jqrg-options-grid, .jqrg-split { grid-template-columns: 1fr; }
   .jqrg-color-pair { grid-template-columns: 1fr 1fr; }
   .jqrg-preview { min-height: 280px; padding: .65rem; }
+  .jqrg-options-grid .jqrg-tooltip__bubble { left: 0; transform: translate(0, 5px); }
+  .jqrg-options-grid .jqrg-tooltip:hover .jqrg-tooltip__bubble, .jqrg-options-grid .jqrg-tooltip:focus .jqrg-tooltip__bubble, .jqrg-options-grid .jqrg-tooltip:focus-within .jqrg-tooltip__bubble { transform: translate(0, 0); }
+  .jqrg-options-grid .jqrg-tooltip__bubble::after { left: 8px; transform: none; }
 }

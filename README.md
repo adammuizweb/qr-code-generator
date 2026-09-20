@@ -22,7 +22,7 @@ Generation is client-side. The plugin does not store payloads, add database tabl
 ```bash
 php tests/contract.php
 node tests/generator.test.js
-php tools/build-package.php /tmp/qr-code-generator-0.1.0.zip
+php tools/build-package.php /tmp/qr-code-generator-0.1.1.zip
 ```
 
 Run PHP and JavaScript syntax checks before packaging:
