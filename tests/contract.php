@@ -26,7 +26,7 @@ $manifest = json_decode($manifestJson, true, 512, JSON_THROW_ON_ERROR);
 $manifestObject = json_decode($manifestJson, false, 512, JSON_THROW_ON_ERROR);
 $check(($manifest['name'] ?? null) === 'qr-code-generator', 'plugin slug is stable');
 $check(($manifest['version'] ?? null) === JQRG_VERSION, 'manifest and runtime versions match');
-$check(($manifest['requires']['jyavani'] ?? null) === '>=2.3.74', 'minimum Core version is explicit');
+$check(($manifest['requires']['jyavani'] ?? null) === '>=2.3.116', 'minimum Core version provides the isolated media-selector context');
 $check(($manifestObject->requires->plugins ?? null) instanceof stdClass, 'plugin dependencies use an object map');
 
 $permission = $manifest['permissions'][0] ?? [];
@@ -39,6 +39,7 @@ $check(($page['route'] ?? '') === JQRG_ROUTE
     && ($page['file'] ?? '') === 'admin/index.php'
     && ($page['permission'] ?? '') === $permission['key'], 'dashboard route uses the declared permission');
 $check(($navigation['page'] ?? '') === JQRG_ROUTE && ($navigation['parent'] ?? '') === 'tools', 'navigation points to the owned Tools route');
+$check(($manifest['dependencies']['js'] ?? null) === ['modal-helpers', 'media-selector'], 'Media Gallery dependencies use Core-owned asset IDs');
 $check(isset($GLOBALS['_jqrg_hooks']['admin_head']), 'route-scoped dashboard assets are registered');
 
 $_GET['page'] = 'admin/tools/another-plugin';
@@ -68,9 +69,13 @@ $check(hash_file('sha256', $root . '/assets/vendor/qrcode.js') === '1d24c1c0679d
 $adminSource = (string)file_get_contents($root . '/admin/index.php');
 $browserSource = (string)file_get_contents($root . '/assets/js/admin.js');
 $check(str_contains($adminSource, "adiwira_require_permission(\$pdo, 'plugin.qr-code-generator.codes.generate', false)"), 'dashboard page enforces permission server-side');
-$check(substr_count($adminSource, 'role="tooltip"') === 4
+$check(substr_count($adminSource, 'role="tooltip"') === 5
     && str_contains($adminSource, 'id="jqrg-type-help"')
     && str_contains($browserSource, "messages.typeHelp[type.value]"), 'accessible tooltips and contextual payload guidance are wired');
+$check(str_contains($adminSource, 'id="jqrg-center-image-choose"')
+    && str_contains($browserSource, 'global.openMediaSelector({')
+    && str_contains($browserSource, "selection_mode: 'immediate'")
+    && str_contains($browserSource, 'scheduleGenerate'), 'Media Gallery image and live-preview controls are wired');
 $check(!preg_match('/\b(?:fetch|XMLHttpRequest|sendBeacon|WebSocket)\s*\(/', $browserSource), 'browser runtime has no payload transport API');
 $check(!preg_match('/\b(?:localStorage|sessionStorage|indexedDB)\b/', $browserSource), 'browser runtime does not persist payloads');
 $check(!isset($manifest['migrations']) && !isset($manifest['frontend']), 'plugin declares no database migrations or frontend routes');

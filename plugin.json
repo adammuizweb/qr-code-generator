@@ -1,6 +1,6 @@
 {
   "name": "qr-code-generator",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "title": "QR Code Generator",
   "description": "Create downloadable QR codes for text, links, email, phone, SMS, and Wi-Fi without sending payloads to an external service.",
   "author": "Adam Muiz",
@@ -15,7 +15,7 @@
     "slug": "qr-code-generator"
   },
   "requires": {
-    "jyavani": ">=2.3.74",
+    "jyavani": ">=2.3.116",
     "php": ">=8.1",
     "extensions": ["json"],
     "plugins": {}
@@ -56,6 +56,9 @@
       {"from": "assets/js/admin.js", "to": "static/plugins/qr-code-generator/admin.js"},
       {"from": "icon.svg", "to": "static/plugins/qr-code-generator/icon.svg"}
     ]
+  },
+  "dependencies": {
+    "js": ["modal-helpers", "media-selector"]
   },
   "assets": {
     "css": [],

@@ -21,6 +21,11 @@ $messages = [
     'resolution' => jqrg_t('Choose a larger image size for this payload.'),
     'overflow' => jqrg_t('This payload is too large for the selected error correction level.'),
     'unexpected' => jqrg_t('The QR code could not be generated in this browser.'),
+    'imageInvalid' => jqrg_t('Choose an image from this site gallery.'),
+    'imageLoadFailed' => jqrg_t('The center image could not be loaded. Choose another gallery image.'),
+    'pickerUnavailable' => jqrg_t('The media gallery is not available for this account.'),
+    'pickerFailed' => jqrg_t('The media gallery could not be opened.'),
+    'updating' => jqrg_t('Updating preview...'),
     'ready' => jqrg_t('QR code ready: %d modules, %d characters.'),
     'copied' => jqrg_t('Payload copied.'),
     'copyFailed' => jqrg_t('Could not copy the payload.'),
@@ -71,7 +76,7 @@ $messages = [
         <label class="jqrg-field"><span><?= jqrg_h(jqrg_t('Text')) ?></span><textarea id="jqrg-text" maxlength="4096" rows="5" placeholder="<?= jqrg_h(jqrg_t('Write the text to encode')) ?>"></textarea></label>
       </div>
       <div class="jqrg-payload-fields" data-jqrg-fields="url">
-        <label class="jqrg-field"><span><?= jqrg_h(jqrg_t('Website URL')) ?></span><input id="jqrg-url" type="url" maxlength="2048" value="https://" inputmode="url" autocomplete="url"></label>
+        <label class="jqrg-field"><span><?= jqrg_h(jqrg_t('Website URL')) ?></span><input id="jqrg-url" type="url" maxlength="2048" placeholder="https://example.com" inputmode="url" autocomplete="url"></label>
       </div>
       <div class="jqrg-payload-fields" data-jqrg-fields="email" hidden>
         <label class="jqrg-field"><span><?= jqrg_h(jqrg_t('Email address')) ?></span><input id="jqrg-email" type="email" maxlength="320" autocomplete="email"></label>
@@ -105,7 +110,26 @@ $messages = [
           <label><span><?= jqrg_h(jqrg_t('Background')) ?></span><input id="jqrg-background" type="color" value="#ffffff"></label>
         </div>
       </div>
-      <button class="jqrg-generate" id="jqrg-generate" type="button"><span aria-hidden="true">+</span><?= jqrg_h(jqrg_t('Generate QR code')) ?></button>
+      <div class="jqrg-center-image">
+        <div class="jqrg-center-image__head">
+          <div><strong><?= jqrg_h(jqrg_t('Center image')) ?></strong><small><?= jqrg_h(jqrg_t('Add a logo or icon from the Media Gallery. High error correction is selected automatically for safer scanning.')) ?></small></div>
+          <span class="jqrg-tooltip" tabindex="0" aria-label="<?= jqrg_h(jqrg_t('More information')) ?>" aria-describedby="jqrg-tip-center-image">?<span class="jqrg-tooltip__bubble" id="jqrg-tip-center-image" role="tooltip"><?= jqrg_h(jqrg_t('The image covers some QR modules. Keep it small, use a simple square image, and test the final code with several cameras.')) ?></span></span>
+        </div>
+        <input id="jqrg-center-image-url" type="hidden" value="">
+        <div class="jqrg-center-image__body">
+          <div class="jqrg-center-image__preview" id="jqrg-center-image-preview" hidden><img id="jqrg-center-image-thumbnail" alt="<?= jqrg_h(jqrg_t('Selected center image')) ?>"></div>
+          <div class="jqrg-center-image__actions">
+            <button id="jqrg-center-image-choose" type="button"><?= jqrg_h(jqrg_t('Choose from Gallery')) ?></button>
+            <button id="jqrg-center-image-clear" type="button" disabled><?= jqrg_h(jqrg_t('Remove image')) ?></button>
+          </div>
+          <label class="jqrg-center-image__size" id="jqrg-center-image-size-wrap" hidden>
+            <span><?= jqrg_h(jqrg_t('Image scale')) ?> <output id="jqrg-center-image-size-output" for="jqrg-center-image-size">18%</output></span>
+            <input id="jqrg-center-image-size" type="range" min="10" max="25" step="1" value="18">
+          </label>
+        </div>
+      </div>
+      <button class="jqrg-generate" id="jqrg-generate" type="button"><span aria-hidden="true">↻</span><?= jqrg_h(jqrg_t('Refresh preview')) ?></button>
+      <p class="jqrg-live-note"><?= jqrg_h(jqrg_t('Live preview updates automatically while you edit.')) ?></p>
     </section>
 
     <aside class="jqrg-card jqrg-preview-card" aria-labelledby="jqrg-preview-title">
@@ -114,7 +138,7 @@ $messages = [
         <div class="jqrg-placeholder" id="jqrg-placeholder" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
         <canvas id="jqrg-canvas" hidden aria-label="<?= jqrg_h(jqrg_t('Generated QR code preview')) ?>"></canvas>
       </div>
-      <p class="jqrg-status" id="jqrg-status" role="status" aria-live="polite"><?= jqrg_h(jqrg_t('Choose a payload and generate your first code.')) ?></p>
+      <p class="jqrg-status" id="jqrg-status" role="status" aria-live="polite"><?= jqrg_h(jqrg_t('Enter a payload to start the live preview.')) ?></p>
       <div class="jqrg-downloads">
         <button id="jqrg-download-png" type="button" disabled><?= jqrg_h(jqrg_t('Download PNG')) ?></button>
         <button id="jqrg-download-svg" type="button" disabled><?= jqrg_h(jqrg_t('Download SVG')) ?></button>

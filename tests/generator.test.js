@@ -59,6 +59,36 @@ test('calculates useful color contrast ratios', () => {
   assert.ok(qr.contrastRatio('#777777', '#888888') < 3);
 });
 
+test('accepts only same-origin center images', () => {
+  assert.equal(
+    qr.normalizeCenterImageUrl('/static/img/logo.png', 'https://site.test/dashboard/', 'https://site.test'),
+    'https://site.test/static/img/logo.png'
+  );
+  assert.equal(
+    qr.normalizeCenterImageUrl('https://site.test/private/media/view/?id=7', 'https://site.test/', 'https://site.test'),
+    'https://site.test/private/media/view/?id=7'
+  );
+  assert.throws(() => qr.normalizeCenterImageUrl('https://cdn.test/logo.png', 'https://site.test/', 'https://site.test'), /imageInvalid/);
+  assert.throws(() => qr.normalizeCenterImageUrl('data:image/png;base64,AAAA', 'https://site.test/', 'https://site.test'), /imageInvalid/);
+});
+
+test('bounds center image geometry to a safe scale', () => {
+  assert.equal(qr.centerImageGeometry(500, 5).percentage, 10);
+  assert.equal(qr.centerImageGeometry(500, 40).percentage, 25);
+  const geometry = qr.centerImageGeometry(500, 18);
+  assert.equal(geometry.imageSize, 90);
+  assert.equal(geometry.imageOffset, 205);
+  assert.ok(geometry.backingSize > geometry.imageSize);
+});
+
+test('sizes raster overlays against the rendered QR area', () => {
+  const layout = qr.qrRasterLayout(256, 81, 4);
+  assert.deepEqual(layout, {totalModules: 89, modulePixels: 2, rasterSize: 178, offset: 39});
+  const geometry = qr.centerImageGeometry(layout.rasterSize, 25);
+  assert.equal(geometry.imageSize, 44.5);
+  assert.ok(geometry.imageSize <= layout.rasterSize * 0.25);
+});
+
 test('encoder accepts UTF-8 ECI assignment 26', () => {
   encoder.stringToBytes = encoder.stringToBytesFuncs['UTF-8'];
   const output = encoder(0, 'M');

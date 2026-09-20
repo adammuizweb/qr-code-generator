@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 if (!defined('PLUGIN_SYSTEM_LOADED')) return;
 
-const JQRG_VERSION = '0.1.1';
+const JQRG_VERSION = '0.2.0';
 const JQRG_ROUTE = 'admin/tools/qr-code-generator';
 
 function jqrg_h(mixed $value): string

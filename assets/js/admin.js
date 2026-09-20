@@ -79,11 +79,56 @@
     return (light + 0.05) / (dark + 0.05);
   }
 
+  function normalizeCenterImageUrl(value, baseUrl, expectedOrigin) {
+    var raw = String(value || '').trim();
+    if (!raw) return '';
+    var parsed;
+    try {
+      parsed = new URL(raw, baseUrl);
+    } catch (error) {
+      throw new Error('imageInvalid');
+    }
+    if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.origin !== expectedOrigin) {
+      throw new Error('imageInvalid');
+    }
+    return parsed.href;
+  }
+
+  function centerImageGeometry(surfaceSize, percentage) {
+    var percent = Math.max(10, Math.min(25, Number(percentage) || 18));
+    var imageSize = surfaceSize * percent / 100;
+    var padding = Math.max(surfaceSize * 0.012, imageSize * 0.08);
+    var backingSize = imageSize + padding * 2;
+    return {
+      percentage: percent,
+      imageSize: imageSize,
+      imageOffset: (surfaceSize - imageSize) / 2,
+      backingSize: backingSize,
+      backingOffset: (surfaceSize - backingSize) / 2,
+      radius: Math.max(surfaceSize * 0.008, backingSize * 0.12)
+    };
+  }
+
+  function qrRasterLayout(outputSize, moduleCount, quietZone) {
+    var totalModules = moduleCount + quietZone * 2;
+    var modulePixels = Math.floor(outputSize / totalModules);
+    var rasterSize = totalModules * modulePixels;
+    return {
+      totalModules: totalModules,
+      modulePixels: modulePixels,
+      rasterSize: rasterSize,
+      offset: Math.floor((outputSize - rasterSize) / 2)
+    };
+  }
+
   var api = {
     escapeWifi: escapeWifi,
     normalizeUrl: normalizeUrl,
     buildPayload: buildPayload,
-    contrastRatio: contrastRatio
+    contrastRatio: contrastRatio,
+    normalizeCenterImageUrl: normalizeCenterImageUrl,
+    centerImageGeometry: centerImageGeometry,
+    qrRasterLayout: qrRasterLayout
   };
   global.JyavaniQrGenerator = api;
 
@@ -124,9 +169,19 @@
     var copyButton = document.getElementById('jqrg-copy');
     var wifiSecurity = document.getElementById('jqrg-wifi-security');
     var wifiPassword = document.getElementById('jqrg-wifi-password');
+    var centerImageUrl = document.getElementById('jqrg-center-image-url');
+    var centerImageChoose = document.getElementById('jqrg-center-image-choose');
+    var centerImageClear = document.getElementById('jqrg-center-image-clear');
+    var centerImagePreview = document.getElementById('jqrg-center-image-preview');
+    var centerImageThumbnail = document.getElementById('jqrg-center-image-thumbnail');
+    var centerImageSizeWrap = document.getElementById('jqrg-center-image-size-wrap');
+    var centerImageSize = document.getElementById('jqrg-center-image-size');
+    var centerImageSizeOutput = document.getElementById('jqrg-center-image-size-output');
     var currentPayload = '';
     var currentSvg = '';
-    var initialStatus = status.textContent;
+    var generationSequence = 0;
+    var generateTimer = null;
+    var imageCache = null;
     var initialPayload = payloadOutput.textContent;
 
     function read(id) {
@@ -154,7 +209,7 @@
       });
     }
 
-    function makeSvg(qr, outputSize, quietZone, dark, light) {
+    function makeSvg(qr, outputSize, quietZone, dark, light, centerAsset) {
       var modules = qr.getModuleCount();
       var total = modules + quietZone * 2;
       var paths = [];
@@ -163,19 +218,43 @@
           if (qr.isDark(row, column)) paths.push('M' + (column + quietZone) + ' ' + (row + quietZone) + 'h1v1h-1z');
         }
       }
+      var overlay = '';
+      if (centerAsset) {
+        var geometry = centerImageGeometry(total, centerAsset.percentage);
+        overlay = '<rect x="' + geometry.backingOffset + '" y="' + geometry.backingOffset + '" width="' + geometry.backingSize + '" height="' + geometry.backingSize + '" rx="' + geometry.radius + '" fill="' + escapeXml(light) + '"/>' +
+          '<image href="' + escapeXml(centerAsset.dataUrl) + '" x="' + geometry.imageOffset + '" y="' + geometry.imageOffset + '" width="' + geometry.imageSize + '" height="' + geometry.imageSize + '" preserveAspectRatio="xMidYMid meet" image-rendering="auto"/>';
+      }
       return '<svg xmlns="http://www.w3.org/2000/svg" width="' + outputSize + '" height="' + outputSize + '" viewBox="0 0 ' + total + ' ' + total + '" shape-rendering="crispEdges" role="img" aria-label="QR code">' +
         '<rect width="' + total + '" height="' + total + '" fill="' + escapeXml(light) + '"/>' +
-        '<path d="' + paths.join('') + '" fill="' + escapeXml(dark) + '"/></svg>';
+        '<path d="' + paths.join('') + '" fill="' + escapeXml(dark) + '"/>' + overlay + '</svg>';
     }
 
-    function drawCanvas(qr, outputSize, quietZone, dark, light) {
+    function roundedRect(context, x, y, width, height, radius) {
+      var safeRadius = Math.min(radius, width / 2, height / 2);
+      context.beginPath();
+      context.moveTo(x + safeRadius, y);
+      context.arcTo(x + width, y, x + width, y + height, safeRadius);
+      context.arcTo(x + width, y + height, x, y + height, safeRadius);
+      context.arcTo(x, y + height, x, y, safeRadius);
+      context.arcTo(x, y, x + width, y, safeRadius);
+      context.closePath();
+    }
+
+    function drawContainedImage(context, image, x, y, size) {
+      var width = image.naturalWidth || image.width;
+      var height = image.naturalHeight || image.height;
+      var scale = Math.min(size / width, size / height);
+      var drawWidth = width * scale;
+      var drawHeight = height * scale;
+      context.drawImage(image, x + (size - drawWidth) / 2, y + (size - drawHeight) / 2, drawWidth, drawHeight);
+    }
+
+    function drawCanvas(qr, outputSize, quietZone, dark, light, centerAsset) {
       var context = canvas.getContext('2d', {alpha: false});
       if (!context) throw new Error('unexpected');
       var modules = qr.getModuleCount();
-      var total = modules + quietZone * 2;
-      var modulePixels = Math.floor(outputSize / total);
-      if (modulePixels < 2) throw new Error('resolution');
-      var offset = Math.floor((outputSize - total * modulePixels) / 2);
+      var layout = qrRasterLayout(outputSize, modules, quietZone);
+      if (layout.modulePixels < 2) throw new Error('resolution');
       canvas.width = outputSize;
       canvas.height = outputSize;
       canvas.style.width = Math.min(outputSize, 560) + 'px';
@@ -186,11 +265,53 @@
       for (var row = 0; row < modules; row += 1) {
         for (var column = 0; column < modules; column += 1) {
           if (!qr.isDark(row, column)) continue;
-          var left = offset + (column + quietZone) * modulePixels;
-          var top = offset + (row + quietZone) * modulePixels;
-          context.fillRect(left, top, modulePixels, modulePixels);
+          var left = layout.offset + (column + quietZone) * layout.modulePixels;
+          var top = layout.offset + (row + quietZone) * layout.modulePixels;
+          context.fillRect(left, top, layout.modulePixels, layout.modulePixels);
         }
       }
+      if (centerAsset) {
+        var geometry = centerImageGeometry(layout.rasterSize, centerAsset.percentage);
+        context.fillStyle = light;
+        roundedRect(context, layout.offset + geometry.backingOffset, layout.offset + geometry.backingOffset, geometry.backingSize, geometry.backingSize, geometry.radius);
+        context.fill();
+        drawContainedImage(context, centerAsset.image, layout.offset + geometry.imageOffset, layout.offset + geometry.imageOffset, geometry.imageSize);
+      }
+    }
+
+    function imageAsDataUrl(image) {
+      var width = image.naturalWidth || image.width;
+      var height = image.naturalHeight || image.height;
+      if (!width || !height) throw new Error('imageLoadFailed');
+      var scale = Math.min(1, 512 / Math.max(width, height));
+      var surface = document.createElement('canvas');
+      surface.width = Math.max(1, Math.round(width * scale));
+      surface.height = Math.max(1, Math.round(height * scale));
+      var context = surface.getContext('2d');
+      if (!context) throw new Error('imageLoadFailed');
+      context.drawImage(image, 0, 0, surface.width, surface.height);
+      try {
+        return surface.toDataURL('image/png');
+      } catch (error) {
+        throw new Error('imageLoadFailed');
+      }
+    }
+
+    function loadCenterImage(url) {
+      if (imageCache && imageCache.url === url) return Promise.resolve(imageCache);
+      return new Promise(function (resolve, reject) {
+        var image = new Image();
+        image.onload = function () {
+          try {
+            imageCache = {url: url, image: image, dataUrl: imageAsDataUrl(image)};
+            resolve(imageCache);
+          } catch (error) {
+            reject(error);
+          }
+        };
+        image.onerror = function () { reject(new Error('imageLoadFailed')); };
+        image.src = url;
+      });
     }
 
     function fail(key) {
@@ -206,21 +327,27 @@
       status.classList.add('is-error');
     }
 
-    function invalidate() {
-      if (!currentPayload) return;
+    function markUpdating() {
+      generationSequence += 1;
       currentPayload = '';
       currentSvg = '';
-      canvas.hidden = true;
-      placeholder.hidden = false;
       pngButton.disabled = true;
       svgButton.disabled = true;
       copyButton.disabled = true;
       payloadOutput.textContent = initialPayload;
-      status.textContent = initialStatus;
+      status.textContent = messages.updating || 'Updating preview...';
       status.classList.remove('is-error');
     }
 
-    function generate() {
+    function scheduleGenerate(delay) {
+      clearTimeout(generateTimer);
+      markUpdating();
+      generateTimer = setTimeout(generate, typeof delay === 'number' ? delay : 320);
+    }
+
+    async function generate() {
+      clearTimeout(generateTimer);
+      var requestSequence = ++generationSequence;
       status.classList.remove('is-error');
       try {
         var payload = buildPayload(type.value, valuesForType(type.value));
@@ -228,14 +355,23 @@
         var light = background.value;
         if (contrastRatio(dark, light) < 3) throw new Error('lowContrast');
         if (relativeLuminance(dark) >= relativeLuminance(light)) throw new Error('reversePolarity');
+        var hasCenterImage = centerImageUrl.value !== '';
+        if (hasCenterImage) errorLevel.value = 'H';
         var qr = global.qrcode(0, errorLevel.value);
         if (/[^\x00-\x7F]/.test(payload)) qr.addData(26, 'ECI');
         qr.addData(payload);
         qr.make();
         var outputSize = parseInt(size.value, 10) || 512;
         var quietZone = Math.max(4, parseInt(margin.value, 10) || 4);
-        drawCanvas(qr, outputSize, quietZone, dark, light);
-        currentSvg = makeSvg(qr, outputSize, quietZone, dark, light);
+        var centerAsset = null;
+        if (hasCenterImage) {
+          var safeImageUrl = normalizeCenterImageUrl(centerImageUrl.value, global.location.href, global.location.origin);
+          centerAsset = await loadCenterImage(safeImageUrl);
+          centerAsset.percentage = parseInt(centerImageSize.value, 10) || 18;
+        }
+        if (requestSequence !== generationSequence) return;
+        drawCanvas(qr, outputSize, quietZone, dark, light, centerAsset);
+        currentSvg = makeSvg(qr, outputSize, quietZone, dark, light, centerAsset);
         currentPayload = payload;
         canvas.hidden = false;
         placeholder.hidden = true;
@@ -246,6 +382,7 @@
         status.textContent = String(messages.ready || 'QR code ready: %d modules, %d characters.')
           .replace('%d', String(qr.getModuleCount())).replace('%d', String(Array.from(payload).length));
       } catch (error) {
+        if (requestSequence !== generationSequence) return;
         var key = error && error.message ? error.message : 'overflow';
         if (!messages[key]) key = 'unexpected';
         fail(key);
@@ -272,16 +409,64 @@
     type.addEventListener('change', function () {
       root.querySelectorAll('[data-jqrg-fields]').forEach(function (group) { group.hidden = group.dataset.jqrgFields !== type.value; });
       if (typeHelp && messages.typeHelp) typeHelp.textContent = messages.typeHelp[type.value] || '';
-      invalidate();
     });
     wifiSecurity.addEventListener('change', function () {
       var open = wifiSecurity.value === 'nopass';
       wifiPassword.disabled = open;
       if (open) wifiPassword.value = '';
     });
-    root.addEventListener('input', invalidate);
-    root.addEventListener('change', invalidate);
-    generateButton.addEventListener('click', generate);
+    centerImageSize.addEventListener('input', function () {
+      centerImageSizeOutput.textContent = centerImageSize.value + '%';
+    });
+    centerImageChoose.addEventListener('click', function () {
+      if (typeof global.openMediaSelector !== 'function') {
+        status.textContent = messages.pickerUnavailable || 'The media gallery is not available for this account.';
+        status.classList.add('is-error');
+        return;
+      }
+      global.openMediaSelector({
+        context: {surface: 'qr-code-generator', consumer: 'qr-code-generator', field: 'center_image', selection_mode: 'immediate'}
+      }).then(function (detail) {
+        var media = typeof global.normalizeMedia === 'function' ? global.normalizeMedia(detail) : detail;
+        if (!media || !media.url) return;
+        var safeUrl;
+        try {
+          safeUrl = normalizeCenterImageUrl(media.url, global.location.href, global.location.origin);
+        } catch (error) {
+          fail('imageInvalid');
+          return;
+        }
+        imageCache = null;
+        centerImageUrl.value = safeUrl;
+        centerImageThumbnail.src = safeUrl;
+        centerImagePreview.hidden = false;
+        centerImageSizeWrap.hidden = false;
+        centerImageClear.disabled = false;
+        errorLevel.value = 'H';
+        scheduleGenerate(0);
+      }).catch(function () {
+        status.textContent = messages.pickerFailed || 'The media gallery could not be opened.';
+        status.classList.add('is-error');
+      });
+    });
+    centerImageClear.addEventListener('click', function () {
+      imageCache = null;
+      centerImageUrl.value = '';
+      centerImageThumbnail.removeAttribute('src');
+      centerImagePreview.hidden = true;
+      centerImageSizeWrap.hidden = true;
+      centerImageClear.disabled = true;
+      scheduleGenerate(0);
+    });
+    root.addEventListener('input', function (event) {
+      if (event.target === centerImageUrl) return;
+      scheduleGenerate();
+    });
+    root.addEventListener('change', function (event) {
+      if (event.target === centerImageUrl) return;
+      scheduleGenerate(0);
+    });
+    generateButton.addEventListener('click', function () { generate(); });
     pngButton.addEventListener('click', function () {
       if (!currentPayload) return;
       canvas.toBlob(function (blob) { if (blob) downloadBlob(blob, filename('png')); }, 'image/png');
