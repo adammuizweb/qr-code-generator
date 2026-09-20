@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">QR Code Generator</title>
+  <desc id="desc">Three QR finder patterns and a small generation spark.</desc>
+  <rect width="128" height="128" rx="24" fill="#0f172a"/>
+  <g fill="none" stroke="#f8fafc" stroke-width="8">
+    <path d="M20 20h32v32H20zM76 20h32v32H76zM20 76h32v32H20z"/>
+  </g>
+  <g fill="#f8fafc">
+    <path d="M31 31h10v10H31zM87 31h10v10H87zM31 87h10v10H31zM70 69h14v14H70zM92 68h16v9H92zM70 92h9v16H70zM88 88h8v8h-8zM100 100h8v8h-8z"/>
+  </g>
+  <path d="M64 48l3.5 9.5L77 61l-9.5 3.5L64 74l-3.5-9.5L51 61l9.5-3.5z" fill="#38bdf8"/>
+</svg>
