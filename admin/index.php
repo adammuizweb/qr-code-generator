@@ -118,6 +118,7 @@ $messages = [
           <label><span><?= jqrg_h(jqrg_t('Background')) ?></span><input id="jqrg-background" type="color" value="#ffffff"></label>
         </div>
         <div class="jqrg-contrast" id="jqrg-contrast"><span><?= jqrg_h(jqrg_t('Contrast ratio')) ?></span><strong id="jqrg-contrast-ratio">17.85:1</strong><small id="jqrg-contrast-label"><?= jqrg_h(jqrg_t('Strong contrast')) ?></small></div>
+        <label class="jqrg-frame-radius"><span class="jqrg-label-row"><?= jqrg_h(jqrg_t('Frame radius')) ?><span class="jqrg-tooltip" tabindex="0" aria-label="<?= jqrg_h(jqrg_t('More information')) ?>" aria-describedby="jqrg-tip-frame-radius">?<span class="jqrg-tooltip__bubble" id="jqrg-tip-frame-radius" role="tooltip"><?= jqrg_h(jqrg_t('Rounds only the outer background corners. QR modules and the quiet zone remain protected. PNG and SVG corners become transparent.')) ?></span></span><output id="jqrg-frame-radius-output" for="jqrg-frame-radius">0%</output></span><input id="jqrg-frame-radius" type="range" min="0" max="12" step="1" value="0"></label>
       </div>
       <div class="jqrg-presets">
         <div class="jqrg-presets__head"><strong><?= jqrg_h(jqrg_t('Visual presets')) ?></strong><small><?= jqrg_h(jqrg_t('Presets include only visual settings. Payloads and selected images are never saved.')) ?></small></div>

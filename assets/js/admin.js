@@ -101,10 +101,42 @@
       errorLevel: errorLevel,
       outputSize: outputSize,
       quietZone: quietZone,
+      frameRadius: Math.max(0, Math.min(12, Number(value.frameRadius) || 0)),
       imageScale: Math.max(10, Math.min(25, Number(value.imageScale) || 18)),
       imageBackgroundMode: backgroundMode,
       imageBackgroundColor: parseHex(value.imageBackgroundColor) ? String(value.imageBackgroundColor).toLowerCase() : '#ffffff',
       imageRadius: Math.max(0, Math.min(50, Number(value.imageRadius) || 0))
+    };
+  }
+
+  function prefillUrlFromFragment(hash, origin) {
+    var prefix = '#jqrg_url=';
+    var rawHash = String(hash || '');
+    if (!rawHash.startsWith(prefix)) return '';
+    var path;
+    try {
+      path = decodeURIComponent(rawHash.slice(prefix.length));
+    } catch (error) {
+      return '';
+    }
+    if (!path || path.length > 2048 || path[0] !== '/' || path.startsWith('//') || /[\\\x00-\x1F\x7F]/.test(path)) return '';
+    try {
+      var parsed = new URL(path, origin);
+      return parsed.origin === origin ? parsed.href : '';
+    } catch (error) {
+      return '';
+    }
+  }
+
+  function frameLayout(moduleCount, quietZone, outerRadius) {
+    var radius = Math.max(0, Math.min(12, Number(outerRadius) || 0));
+    var framePadding = radius > 0 ? 8 : 0;
+    return {
+      radius: radius,
+      framePadding: framePadding,
+      moduleOffset: quietZone + framePadding,
+      innerModules: moduleCount + quietZone * 2,
+      totalModules: moduleCount + (quietZone + framePadding) * 2
     };
   }
 
@@ -167,6 +199,8 @@
     contrastRatio: contrastRatio,
     assessContrast: assessContrast,
     sanitizeVisualPreset: sanitizeVisualPreset,
+    prefillUrlFromFragment: prefillUrlFromFragment,
+    frameLayout: frameLayout,
     normalizeCenterImageUrl: normalizeCenterImageUrl,
     centerImageGeometry: centerImageGeometry,
     qrRasterLayout: qrRasterLayout,
@@ -204,6 +238,8 @@
     var contrastBox = document.getElementById('jqrg-contrast');
     var contrastRatioOutput = document.getElementById('jqrg-contrast-ratio');
     var contrastLabel = document.getElementById('jqrg-contrast-label');
+    var frameRadius = document.getElementById('jqrg-frame-radius');
+    var frameRadiusOutput = document.getElementById('jqrg-frame-radius-output');
     var presetSelect = document.getElementById('jqrg-preset-select');
     var customPresetGroup = document.getElementById('jqrg-custom-presets');
     var presetDelete = document.getElementById('jqrg-preset-delete');
@@ -240,10 +276,15 @@
     var initialPayload = payloadOutput.textContent;
     var presetStorageKey = 'jqrg.visualPresets.v1';
     var builtInPresets = {
-      classic: sanitizeVisualPreset({foreground: '#0f172a', background: '#ffffff', errorLevel: 'M', outputSize: 512, quietZone: 4, imageScale: 18, imageBackgroundMode: 'match', imageRadius: 12}),
-      print: sanitizeVisualPreset({foreground: '#000000', background: '#ffffff', errorLevel: 'H', outputSize: 1024, quietZone: 6, imageScale: 16, imageBackgroundMode: 'match', imageRadius: 0}),
-      ocean: sanitizeVisualPreset({foreground: '#064e5b', background: '#ecfeff', errorLevel: 'Q', outputSize: 768, quietZone: 4, imageScale: 18, imageBackgroundMode: 'custom', imageBackgroundColor: '#ffffff', imageRadius: 24})
+      classic: sanitizeVisualPreset({foreground: '#0f172a', background: '#ffffff', errorLevel: 'M', outputSize: 512, quietZone: 4, frameRadius: 0, imageScale: 18, imageBackgroundMode: 'match', imageRadius: 12}),
+      print: sanitizeVisualPreset({foreground: '#000000', background: '#ffffff', errorLevel: 'H', outputSize: 1024, quietZone: 6, frameRadius: 0, imageScale: 16, imageBackgroundMode: 'match', imageRadius: 0}),
+      ocean: sanitizeVisualPreset({foreground: '#064e5b', background: '#ecfeff', errorLevel: 'Q', outputSize: 768, quietZone: 4, frameRadius: 10, imageScale: 18, imageBackgroundMode: 'custom', imageBackgroundColor: '#ffffff', imageRadius: 24})
     };
+    var prefilledUrl = prefillUrlFromFragment(global.location.hash, global.location.origin);
+    if (global.location.hash.startsWith('#jqrg_url=')) {
+      global.history.replaceState(null, '', global.location.pathname + global.location.search);
+    }
+    if (prefilledUrl) document.getElementById('jqrg-url').value = prefilledUrl;
 
     function read(id) {
       var element = document.getElementById(id);
@@ -271,6 +312,7 @@
         errorLevel: errorLevel.value,
         outputSize: size.value,
         quietZone: margin.value,
+        frameRadius: frameRadius.value,
         imageScale: centerImageSize.value,
         imageBackgroundMode: centerImageBackgroundMode.value,
         imageBackgroundColor: centerImageBackgroundColor.value,
@@ -303,6 +345,8 @@
       errorLevel.value = safe.errorLevel;
       size.value = String(safe.outputSize);
       margin.value = String(safe.quietZone);
+      frameRadius.value = String(safe.frameRadius);
+      frameRadiusOutput.textContent = safe.frameRadius + '%';
       centerImageSize.value = String(safe.imageScale);
       centerImageBackgroundMode.value = safe.imageBackgroundMode;
       centerImageBackgroundColor.value = safe.imageBackgroundColor;
@@ -353,7 +397,7 @@
     }
 
     function markPresetModified(target) {
-      var visualControls = [foreground, background, errorLevel, size, margin, centerImageSize, centerImageBackgroundMode, centerImageBackgroundColor, centerImageRadius];
+      var visualControls = [foreground, background, errorLevel, size, margin, frameRadius, centerImageSize, centerImageBackgroundMode, centerImageBackgroundColor, centerImageRadius];
       if (visualControls.indexOf(target) < 0) return;
       presetSelect.value = '';
       presetDelete.disabled = true;
@@ -365,18 +409,21 @@
       });
     }
 
-    function makeSvg(qr, outputSize, quietZone, dark, light, centerAsset) {
+    function makeSvg(qr, outputSize, quietZone, dark, light, centerAsset, outerRadius) {
       var modules = qr.getModuleCount();
-      var total = modules + quietZone * 2;
+      var frame = frameLayout(modules, quietZone, outerRadius);
+      var total = frame.totalModules;
       var paths = [];
       for (var row = 0; row < modules; row += 1) {
         for (var column = 0; column < modules; column += 1) {
-          if (qr.isDark(row, column)) paths.push('M' + (column + quietZone) + ' ' + (row + quietZone) + 'h1v1h-1z');
+          if (qr.isDark(row, column)) paths.push('M' + (column + frame.moduleOffset) + ' ' + (row + frame.moduleOffset) + 'h1v1h-1z');
         }
       }
       var overlay = '';
       if (centerAsset) {
-        var geometry = centerImageGeometry(total, centerAsset.percentage);
+        var geometry = centerImageGeometry(frame.innerModules, centerAsset.percentage);
+        geometry.imageOffset += frame.framePadding;
+        geometry.backingOffset += frame.framePadding;
         var imageRect = containedImageRect(centerAsset.width, centerAsset.height, geometry.imageOffset, geometry.imageOffset, geometry.imageSize);
         var radius = Math.min(imageRect.width, imageRect.height) * centerAsset.radius / 100;
         var backingRadius = geometry.backingSize * centerAsset.radius / 100;
@@ -384,9 +431,15 @@
         overlay = '<defs><clipPath id="jqrg-center-clip"><rect x="' + imageRect.x + '" y="' + imageRect.y + '" width="' + imageRect.width + '" height="' + imageRect.height + '" rx="' + radius + '"/></clipPath></defs>' + backplate +
           '<image href="' + escapeXml(centerAsset.dataUrl) + '" x="' + imageRect.x + '" y="' + imageRect.y + '" width="' + imageRect.width + '" height="' + imageRect.height + '" image-rendering="auto" clip-path="url(#jqrg-center-clip)"/>';
       }
-      return '<svg xmlns="http://www.w3.org/2000/svg" width="' + outputSize + '" height="' + outputSize + '" viewBox="0 0 ' + total + ' ' + total + '" shape-rendering="crispEdges" role="img" aria-label="QR code">' +
+      var body =
         '<rect width="' + total + '" height="' + total + '" fill="' + escapeXml(light) + '"/>' +
-        '<path d="' + paths.join('') + '" fill="' + escapeXml(dark) + '"/>' + overlay + '</svg>';
+        '<path d="' + paths.join('') + '" fill="' + escapeXml(dark) + '"/>' + overlay;
+      var safeOuterRadius = frame.radius;
+      var frameClip = safeOuterRadius > 0
+        ? '<defs><clipPath id="jqrg-frame-clip"><rect width="' + total + '" height="' + total + '" rx="' + (total * safeOuterRadius / 100) + '"/></clipPath></defs>'
+        : '';
+      if (safeOuterRadius > 0) body = '<g clip-path="url(#jqrg-frame-clip)">' + body + '</g>';
+      return '<svg xmlns="http://www.w3.org/2000/svg" width="' + outputSize + '" height="' + outputSize + '" viewBox="0 0 ' + total + ' ' + total + '" shape-rendering="crispEdges" role="img" aria-label="QR code">' + frameClip + body + '</svg>';
     }
 
     function roundedRect(context, x, y, width, height, radius) {
@@ -407,41 +460,52 @@
       context.drawImage(image, rect.x, rect.y, rect.width, rect.height);
     }
 
-    function drawCanvas(qr, outputSize, quietZone, dark, light, centerAsset) {
-      var context = canvas.getContext('2d', {alpha: false});
+    function drawCanvas(qr, outputSize, quietZone, dark, light, centerAsset, outerRadius) {
+      var context = canvas.getContext('2d');
       if (!context) throw new Error('unexpected');
       var modules = qr.getModuleCount();
-      var layout = qrRasterLayout(outputSize, modules, quietZone);
+      var frame = frameLayout(modules, quietZone, outerRadius);
+      var layout = qrRasterLayout(outputSize, modules, quietZone + frame.framePadding);
       if (layout.modulePixels < 2) throw new Error('resolution');
       canvas.width = outputSize;
       canvas.height = outputSize;
       canvas.style.width = Math.min(outputSize, 560) + 'px';
       canvas.style.height = Math.min(outputSize, 560) + 'px';
+      context.clearRect(0, 0, outputSize, outputSize);
+      var safeOuterRadius = frame.radius;
+      if (safeOuterRadius > 0) {
+        context.save();
+        roundedRect(context, 0, 0, outputSize, outputSize, outputSize * safeOuterRadius / 100);
+        context.clip();
+      }
       context.fillStyle = light;
       context.fillRect(0, 0, outputSize, outputSize);
       context.fillStyle = dark;
       for (var row = 0; row < modules; row += 1) {
         for (var column = 0; column < modules; column += 1) {
           if (!qr.isDark(row, column)) continue;
-          var left = layout.offset + (column + quietZone) * layout.modulePixels;
-          var top = layout.offset + (row + quietZone) * layout.modulePixels;
+          var left = layout.offset + (column + frame.moduleOffset) * layout.modulePixels;
+          var top = layout.offset + (row + frame.moduleOffset) * layout.modulePixels;
           context.fillRect(left, top, layout.modulePixels, layout.modulePixels);
         }
       }
       if (centerAsset) {
-        var geometry = centerImageGeometry(layout.rasterSize, centerAsset.percentage);
+        var innerSize = frame.innerModules * layout.modulePixels;
+        var innerOffset = layout.offset + frame.framePadding * layout.modulePixels;
+        var geometry = centerImageGeometry(innerSize, centerAsset.percentage);
         if (centerAsset.backgroundMode !== 'transparent') {
           context.fillStyle = centerAsset.backgroundColor;
-          roundedRect(context, layout.offset + geometry.backingOffset, layout.offset + geometry.backingOffset, geometry.backingSize, geometry.backingSize, geometry.backingSize * centerAsset.radius / 100);
+          roundedRect(context, innerOffset + geometry.backingOffset, innerOffset + geometry.backingOffset, geometry.backingSize, geometry.backingSize, geometry.backingSize * centerAsset.radius / 100);
           context.fill();
         }
-        var imageRect = containedImageRect(centerAsset.image.naturalWidth || centerAsset.image.width, centerAsset.image.naturalHeight || centerAsset.image.height, layout.offset + geometry.imageOffset, layout.offset + geometry.imageOffset, geometry.imageSize);
+        var imageRect = containedImageRect(centerAsset.image.naturalWidth || centerAsset.image.width, centerAsset.image.naturalHeight || centerAsset.image.height, innerOffset + geometry.imageOffset, innerOffset + geometry.imageOffset, geometry.imageSize);
         context.save();
         roundedRect(context, imageRect.x, imageRect.y, imageRect.width, imageRect.height, Math.min(imageRect.width, imageRect.height) * centerAsset.radius / 100);
         context.clip();
         drawContainedImage(context, centerAsset.image, imageRect);
         context.restore();
       }
+      if (safeOuterRadius > 0) context.restore();
     }
 
     function imageAsDataUrl(image) {
@@ -545,8 +609,9 @@
           };
         }
         if (requestSequence !== generationSequence) return;
-        drawCanvas(qr, outputSize, quietZone, dark, light, centerAsset);
-        currentSvg = makeSvg(qr, outputSize, quietZone, dark, light, centerAsset);
+        var outerRadius = parseInt(frameRadius.value, 10) || 0;
+        drawCanvas(qr, outputSize, quietZone, dark, light, centerAsset, outerRadius);
+        currentSvg = makeSvg(qr, outputSize, quietZone, dark, light, centerAsset, outerRadius);
         currentPayload = payload;
         canvas.hidden = false;
         placeholder.hidden = true;
@@ -604,6 +669,9 @@
     });
     centerImageRadius.addEventListener('input', function () {
       centerImageRadiusOutput.textContent = centerImageRadius.value + '%';
+    });
+    frameRadius.addEventListener('input', function () {
+      frameRadiusOutput.textContent = frameRadius.value + '%';
     });
     centerImageBackgroundMode.addEventListener('change', updateCenterStyleVisibility);
     presetSelect.addEventListener('change', function () {
@@ -720,6 +788,7 @@
     updateCenterStyleVisibility();
     updateContrastFeedback();
     renderCustomPresets('');
+    if (read('jqrg-url').trim() !== '') scheduleGenerate(0);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, {once: true});

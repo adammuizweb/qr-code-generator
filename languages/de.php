@@ -112,4 +112,8 @@ return [
     'Transparent' => 'Transparent',
     'Background color' => 'Hintergrundfarbe',
     'Corner radius' => 'Eckenradius',
+    'Frame radius' => 'Rahmenradius',
+    'Rounds only the outer background corners. QR modules and the quiet zone remain protected. PNG and SVG corners become transparent.' => 'Rundet nur die äußeren Hintergrundecken ab. QR-Module und Ruhezone bleiben geschützt. Die Ecken von PNG und SVG werden transparent.',
+    'QR' => 'QR',
+    'Create QR code for %s' => 'QR-Code für %s erstellen',
 ];

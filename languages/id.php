@@ -112,4 +112,8 @@ return [
     'Transparent' => 'Transparan',
     'Background color' => 'Warna latar',
     'Corner radius' => 'Radius sudut',
+    'Frame radius' => 'Radius bingkai',
+    'Rounds only the outer background corners. QR modules and the quiet zone remain protected. PNG and SVG corners become transparent.' => 'Hanya membulatkan sudut latar terluar. Modul QR dan area kosong tetap terlindungi. Sudut PNG dan SVG menjadi transparan.',
+    'QR' => 'QR',
+    'Create QR code for %s' => 'Buat kode QR untuk %s',
 ];

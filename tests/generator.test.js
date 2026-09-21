@@ -66,17 +66,34 @@ test('calculates useful color contrast ratios', () => {
 test('sanitizes visual presets without payload or image data', () => {
   const preset = qr.sanitizeVisualPreset({
     foreground: '#123456', background: '#abcdef', errorLevel: 'H', outputSize: 1024,
-    quietZone: 8, imageScale: 25, imageBackgroundMode: 'transparent',
+    quietZone: 8, frameRadius: 16, imageScale: 25, imageBackgroundMode: 'transparent',
     imageBackgroundColor: '#fedcba', imageRadius: 50, payload: 'secret', imageUrl: '/private/image'
   });
   assert.deepEqual(Object.keys(preset), [
-    'foreground', 'background', 'errorLevel', 'outputSize', 'quietZone', 'imageScale',
+    'foreground', 'background', 'errorLevel', 'outputSize', 'quietZone', 'frameRadius', 'imageScale',
     'imageBackgroundMode', 'imageBackgroundColor', 'imageRadius'
   ]);
   assert.equal(preset.imageBackgroundMode, 'transparent');
+  assert.equal(preset.frameRadius, 12);
   assert.equal(preset.imageRadius, 50);
   assert.equal('payload' in preset, false);
   assert.equal('imageUrl' in preset, false);
+});
+
+test('reads same-origin prefill paths only from the URL fragment', () => {
+  assert.equal(qr.prefillUrlFromFragment('#jqrg_url=%2Farticle%2F', 'https://site.test'), 'https://site.test/article/');
+  assert.equal(qr.prefillUrlFromFragment('#jqrg_url=%2F%2Fevil.test%2F', 'https://site.test'), '');
+  assert.equal(qr.prefillUrlFromFragment('#jqrg_url=https%3A%2F%2Fevil.test%2F', 'https://site.test'), '');
+  assert.equal(qr.prefillUrlFromFragment('#other=value', 'https://site.test'), '');
+});
+
+test('adds protected frame padding before rounding the outer surface', () => {
+  const frame = qr.frameLayout(177, 4, 12);
+  assert.deepEqual(frame, {radius: 12, framePadding: 8, moduleOffset: 12, innerModules: 185, totalModules: 201});
+  const radius = frame.totalModules * frame.radius / 100;
+  const boundaryAtFinder = radius - Math.sqrt(2 * radius * frame.moduleOffset - frame.moduleOffset ** 2);
+  assert.ok(boundaryAtFinder <= frame.framePadding);
+  assert.equal(qr.frameLayout(177, 4, 0).framePadding, 0);
 });
 
 test('accepts only same-origin center images', () => {
