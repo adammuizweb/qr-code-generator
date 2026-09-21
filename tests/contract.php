@@ -5,6 +5,8 @@ $root = dirname(__DIR__);
 $GLOBALS['_jqrg_hooks'] = [];
 $GLOBALS['_jqrg_locale'] = 'en';
 $GLOBALS['_jqrg_can_generate'] = true;
+$GLOBALS['_jqrg_can_manage'] = true;
+$GLOBALS['_jqrg_setting'] = '';
 
 define('PLUGIN_SYSTEM_LOADED', true);
 define('ADMIN_BASE_PATH', '/hidden-admin');
@@ -20,8 +22,13 @@ function add_filter(string $name, callable $callback, int $priority = 10): void
 }
 function user_can(PDO $pdo, int $userId, string $permission, array $context = []): bool
 {
-    return $GLOBALS['_jqrg_can_generate'] && $userId === 7 && $permission === 'plugin.qr-code-generator.codes.generate';
+    if ($userId !== 7) return false;
+    if ($permission === 'plugin.qr-code-generator.codes.generate') return $GLOBALS['_jqrg_can_generate'];
+    if ($permission === 'plugin.qr-code-generator.presets.manage') return $GLOBALS['_jqrg_can_manage'];
+    return false;
 }
+function settings_get(PDO $pdo, string $key, ?string $default = null): ?string { return $GLOBALS['_jqrg_setting'] ?: $default; }
+function csrf_token(): string { return 'contract-token'; }
 
 require_once $root . '/plugin.php';
 
@@ -40,14 +47,23 @@ $check(($manifest['requires']['jyavani'] ?? null) === '>=2.3.147', 'minimum Core
 $check(($manifestObject->requires->plugins ?? null) instanceof stdClass, 'plugin dependencies use an object map');
 
 $permission = $manifest['permissions'][0] ?? [];
+$presetPermission = $manifest['permissions'][1] ?? [];
 $page = $manifest['admin']['pages'][0] ?? [];
+$presetPage = $manifest['admin']['pages'][1] ?? [];
 $navigation = $manifest['admin']['nav'][0] ?? [];
 $check(($permission['key'] ?? '') === 'plugin.qr-code-generator.codes.generate'
     && ($permission['default_roles'] ?? null) === ['admin']
     && ($permission['delegable'] ?? null) === true, 'generation permission is declared and delegable');
+$check(($presetPermission['key'] ?? '') === 'plugin.qr-code-generator.presets.manage'
+    && ($presetPermission['default_roles'] ?? null) === ['admin']
+    && ($presetPermission['delegable'] ?? null) === true, 'Site Default Preset has a dedicated delegable permission');
 $check(($page['route'] ?? '') === JQRG_ROUTE
     && ($page['file'] ?? '') === 'admin/index.php'
     && ($page['permission'] ?? '') === $permission['key'], 'dashboard route uses the declared permission');
+$check(($presetPage['route'] ?? '') === JQRG_DEFAULT_PRESET_ROUTE
+    && ($presetPage['file'] ?? '') === 'admin/default-preset.php'
+    && ($presetPage['hidden'] ?? null) === true
+    && ($presetPage['permission'] ?? '') === $presetPermission['key'], 'Site Default Preset endpoint is hidden and permission guarded');
 $check(($navigation['page'] ?? '') === JQRG_ROUTE && ($navigation['parent'] ?? '') === 'tools', 'navigation points to the owned Tools route');
 $check(($manifest['dependencies']['js'] ?? null) === ['modal-helpers', 'media-selector'], 'Media Gallery dependencies use Core-owned asset IDs');
 $check(isset($GLOBALS['_jqrg_hooks']['admin_head']), 'route-scoped dashboard assets are registered');
@@ -67,6 +83,9 @@ $check(jqrg_public_path('//evil.test/') === null && jqrg_public_path('https://ev
     && jqrg_public_path('/%252f%252fevil.test/') === null
     && jqrg_public_path('/safe/%0dheader/') === null
     && jqrg_public_path('/safe/path/') === '/safe/path/', 'row actions accept only safe root-relative public paths');
+$check(jqrg_visual_settings_are_quick_safe(jqrg_sanitize_visual_settings([]))
+    && !jqrg_visual_settings_are_quick_safe(jqrg_sanitize_visual_settings(['foreground' => '#ffffff', 'background' => '#000000']))
+    && !jqrg_visual_settings_are_quick_safe(jqrg_sanitize_visual_settings(['foreground' => '#777777', 'background' => '#888888'])), 'Site Default Preset requires scanner-safe contrast and polarity');
 $check(jqrg_content_row_actions([], ['title' => 'Draft'], [
     'content_type' => 'page', 'actor_id' => 7, 'status' => 'draft', 'is_public' => false, 'public_url' => '/draft/',
 ], $pdo) === [], 'non-public content does not receive a QR action');
@@ -82,12 +101,21 @@ jqrg_admin_assets();
 $unrelatedAssets = (string)ob_get_clean();
 $check($unrelatedAssets === '', 'assets do not load on unrelated dashboard routes');
 $_GET['page'] = JQRG_ROUTE;
+$_SESSION['user_id'] = 7;
 ob_start();
 jqrg_admin_assets();
 $ownedAssets = (string)ob_get_clean();
 $check(str_contains($ownedAssets, '/static/plugins/qr-code-generator/admin.css?v=' . JQRG_VERSION)
     && str_contains($ownedAssets, '/static/plugins/qr-code-generator/qrcode.js?v=' . JQRG_VERSION)
-    && str_contains($ownedAssets, '/static/plugins/qr-code-generator/admin.js?v=' . JQRG_VERSION), 'owned route loads each versioned static asset');
+    && str_contains($ownedAssets, '/static/plugins/qr-code-generator/admin.js?v=' . JQRG_VERSION)
+    && str_contains($ownedAssets, 'JQRG_CONFIG'), 'owned route loads each versioned static asset and bounded configuration');
+$_GET['page'] = 'admin/posts/index';
+ob_start();
+jqrg_admin_assets();
+$quickAssets = (string)ob_get_clean();
+$check(str_contains($quickAssets, '/static/plugins/qr-code-generator/quick.css?v=' . JQRG_VERSION)
+    && str_contains($quickAssets, '/static/plugins/qr-code-generator/quick.js?v=' . JQRG_VERSION)
+    && !str_contains($quickAssets, '/static/plugins/qr-code-generator/admin.css?v='), 'content lists load only quick-modal assets');
 
 $staticSources = [];
 foreach ($manifest['static']['copy'] ?? [] as $entry) {
@@ -101,7 +129,9 @@ $check(count($staticSources) === count(array_unique($staticSources)), 'static so
 $check(hash_file('sha256', $root . '/assets/vendor/qrcode.js') === '1d24c1c0679d1f406bc0eaeeb79d908681775e42597142214e7fe73261e6eb04', 'vendored encoder matches the reviewed local checksum');
 
 $adminSource = (string)file_get_contents($root . '/admin/index.php');
+$presetEndpoint = (string)file_get_contents($root . '/admin/default-preset.php');
 $browserSource = (string)file_get_contents($root . '/assets/js/admin.js');
+$quickSource = (string)file_get_contents($root . '/assets/js/quick.js');
 $check(str_contains($adminSource, "adiwira_require_permission(\$pdo, 'plugin.qr-code-generator.codes.generate', false)"), 'dashboard page enforces permission server-side');
 $check(substr_count($adminSource, 'role="tooltip"') === 6
     && str_contains($adminSource, 'id="jqrg-type-help"')
@@ -113,6 +143,9 @@ $check(str_contains($adminSource, 'id="jqrg-center-image-choose"')
 $check(str_contains($adminSource, 'id="jqrg-center-image-background-mode"')
     && str_contains($adminSource, 'id="jqrg-center-image-background-color"')
     && str_contains($adminSource, 'id="jqrg-center-image-radius"'), 'center image background, transparency, and radius controls are rendered');
+$check(str_contains($adminSource, 'id="jqrg-center-image-trim"')
+    && str_contains($browserSource, 'alphaTrimBounds')
+    && str_contains($browserSource, 'trimCenterImage'), 'center images support automatic alpha trim and bounded manual trim');
 $check(str_contains($adminSource, 'id="jqrg-preset-select"')
     && str_contains($browserSource, "presetStorageKey = 'jqrg.visualPresets.v1'")
     && substr_count($browserSource, 'global.localStorage.') === 2, 'visual presets use one bounded browser-local storage namespace');
@@ -123,14 +156,31 @@ $check(str_contains($adminSource, 'id="jqrg-frame-radius"')
 $check(!str_contains($adminSource, "\$_GET['jqrg_url']")
     && str_contains($browserSource, "prefix = '#jqrg_url='")
     && str_contains($browserSource, 'global.history.replaceState'), 'prefilled payload stays in the browser fragment and is removed after reading');
-$check(!preg_match('/\b(?:fetch|XMLHttpRequest|sendBeacon|WebSocket)\s*\(/', $browserSource), 'browser runtime has no payload transport API');
+$check(substr_count($browserSource, 'fetch(') === 1
+    && str_contains($browserSource, 'settings: currentVisualSettings()')
+    && !str_contains($browserSource, 'currentPayload})')
+    && !preg_match('/\b(?:XMLHttpRequest|sendBeacon|WebSocket)\s*\(/', $browserSource . $quickSource), 'network writes are limited to payload-free Site Default Preset settings');
 $check(!preg_match('/\b(?:sessionStorage|indexedDB)\b/', $browserSource)
     && !str_contains($browserSource, 'localStorage.setItem(presetStorageKey, currentPayload)')
     && !str_contains($browserSource, 'localStorage.setItem(presetStorageKey, centerImageUrl'), 'browser storage never receives payloads or selected image URLs');
+$check(str_contains($quickSource, "url.hash.startsWith('#jqrg_url=')")
+    && str_contains($quickSource, 'navigator.canShare({files: [file]})')
+    && str_contains($quickSource, 'navigator.clipboard.writeText(value)')
+    && str_contains($quickSource, 'var sharePayload = payload')
+    && str_contains($quickSource, 'shareSequence === modalSequence')
+    && str_contains($quickSource, 'node.inert = true')
+    && str_contains($quickSource, 'restoreBackground()')
+    && str_contains($quickSource, "role=\"dialog\"")
+    && !preg_match('/\b(?:fetch|XMLHttpRequest|sendBeacon|WebSocket)\s*\(/', $quickSource), 'quick modal generates locally with image sharing and URL-copy fallback');
+$check(strpos($browserSource, 'if (requestSequence !== generationSequence) return;')
+    < strpos($browserSource, 'centerImageThumbnail.src = centerAsset.dataUrl'), 'stale image trimming cannot overwrite the current thumbnail');
+$check(str_contains($presetEndpoint, "adiwira_csrf_validate(")
+    && str_contains($presetEndpoint, 'settings_set($pdo, JQRG_DEFAULT_PRESET_SETTING')
+    && !str_contains($presetEndpoint, 'public_url'), 'Site Default Preset endpoint is CSRF protected and stores visual settings only');
 $check(!isset($manifest['migrations']) && !isset($manifest['frontend']), 'plugin declares no database migrations or frontend routes');
 
 $translationSources = [];
-foreach (['plugin.php', 'admin/index.php'] as $relative) {
+foreach (['plugin.php', 'admin/index.php', 'admin/default-preset.php'] as $relative) {
     $source = (string)file_get_contents($root . '/' . $relative);
     preg_match_all("/jqrg_t\\('((?:[^'\\\\]|\\\\.)*)'/", $source, $matches);
     foreach ($matches[1] ?? [] as $message) $translationSources[stripcslashes($message)] = true;

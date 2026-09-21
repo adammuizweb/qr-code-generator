@@ -105,7 +105,8 @@
       imageScale: Math.max(10, Math.min(25, Number(value.imageScale) || 18)),
       imageBackgroundMode: backgroundMode,
       imageBackgroundColor: parseHex(value.imageBackgroundColor) ? String(value.imageBackgroundColor).toLowerCase() : '#ffffff',
-      imageRadius: Math.max(0, Math.min(50, Number(value.imageRadius) || 0))
+      imageRadius: Math.max(0, Math.min(50, Number(value.imageRadius) || 0)),
+      imageTrim: Math.max(0, Math.min(20, Number(value.imageTrim) || 0))
     };
   }
 
@@ -192,6 +193,98 @@
     return {x: x + (size - drawWidth) / 2, y: y + (size - drawHeight) / 2, width: drawWidth, height: drawHeight};
   }
 
+  function alphaTrimBounds(pixels, width, height, manualPercent) {
+    width = Math.max(1, Math.floor(Number(width) || 1));
+    height = Math.max(1, Math.floor(Number(height) || 1));
+    var left = width;
+    var top = height;
+    var right = -1;
+    var bottom = -1;
+    for (var y = 0; y < height; y += 1) {
+      for (var x = 0; x < width; x += 1) {
+        if (Number(pixels[(y * width + x) * 4 + 3] || 0) <= 8) continue;
+        if (x < left) left = x;
+        if (x > right) right = x;
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+      }
+    }
+    if (right < left || bottom < top) return null;
+    var visibleWidth = right - left + 1;
+    var visibleHeight = bottom - top + 1;
+    var percent = Math.max(0, Math.min(20, Number(manualPercent) || 0));
+    var inset = Math.min(
+      Math.floor(Math.min(visibleWidth, visibleHeight) * percent / 100),
+      Math.floor((visibleWidth - 1) / 2),
+      Math.floor((visibleHeight - 1) / 2)
+    );
+    return {x: left + inset, y: top + inset, width: visibleWidth - inset * 2, height: visibleHeight - inset * 2};
+  }
+
+  function configureQrEncoding(qrcodeFactory) {
+    if (!qrcodeFactory) return;
+    if (typeof TextEncoder === 'function') {
+      qrcodeFactory.stringToBytes = function (value) {
+        return Array.prototype.slice.call(new TextEncoder().encode(value));
+      };
+    } else {
+      qrcodeFactory.stringToBytes = function (value) {
+        return unescape(encodeURIComponent(value)).split('').map(function (character) { return character.charCodeAt(0); });
+      };
+    }
+  }
+
+  function roundedRect(context, x, y, width, height, radius) {
+    var safeRadius = Math.min(radius, width / 2, height / 2);
+    context.beginPath();
+    context.moveTo(x + safeRadius, y);
+    context.arcTo(x + width, y, x + width, y + height, safeRadius);
+    context.arcTo(x + width, y + height, x, y + height, safeRadius);
+    context.arcTo(x, y + height, x, y, safeRadius);
+    context.arcTo(x, y, x + width, y, safeRadius);
+    context.closePath();
+  }
+
+  function renderBasicCanvas(target, payload, settings, qrcodeFactory) {
+    var safe = sanitizeVisualPreset(settings);
+    if (!target || typeof target.getContext !== 'function' || typeof qrcodeFactory !== 'function') throw new Error('unexpected');
+    configureQrEncoding(qrcodeFactory);
+    var qr = qrcodeFactory(0, safe.errorLevel);
+    if (/[^\x00-\x7F]/.test(payload)) qr.addData(26, 'ECI');
+    qr.addData(String(payload));
+    qr.make();
+    var context = target.getContext('2d');
+    if (!context) throw new Error('unexpected');
+    var modules = qr.getModuleCount();
+    var frame = frameLayout(modules, safe.quietZone, safe.frameRadius);
+    var layout = qrRasterLayout(safe.outputSize, modules, safe.quietZone + frame.framePadding);
+    if (layout.modulePixels < 2) throw new Error('resolution');
+    target.width = safe.outputSize;
+    target.height = safe.outputSize;
+    context.clearRect(0, 0, safe.outputSize, safe.outputSize);
+    if (frame.radius > 0) {
+      context.save();
+      roundedRect(context, 0, 0, safe.outputSize, safe.outputSize, safe.outputSize * frame.radius / 100);
+      context.clip();
+    }
+    context.fillStyle = safe.background;
+    context.fillRect(0, 0, safe.outputSize, safe.outputSize);
+    context.fillStyle = safe.foreground;
+    for (var row = 0; row < modules; row += 1) {
+      for (var column = 0; column < modules; column += 1) {
+        if (!qr.isDark(row, column)) continue;
+        context.fillRect(
+          layout.offset + (column + frame.moduleOffset) * layout.modulePixels,
+          layout.offset + (row + frame.moduleOffset) * layout.modulePixels,
+          layout.modulePixels,
+          layout.modulePixels
+        );
+      }
+    }
+    if (frame.radius > 0) context.restore();
+    return {modules: modules, settings: safe};
+  }
+
   var api = {
     escapeWifi: escapeWifi,
     normalizeUrl: normalizeUrl,
@@ -204,7 +297,9 @@
     normalizeCenterImageUrl: normalizeCenterImageUrl,
     centerImageGeometry: centerImageGeometry,
     qrRasterLayout: qrRasterLayout,
-    containedImageRect: containedImageRect
+    containedImageRect: containedImageRect,
+    alphaTrimBounds: alphaTrimBounds,
+    renderBasicCanvas: renderBasicCanvas
   };
   global.JyavaniQrGenerator = api;
 
@@ -214,15 +309,7 @@
     var root = document.getElementById('jqrg-app');
     if (!root || typeof global.qrcode !== 'function') return;
 
-    if (typeof TextEncoder === 'function') {
-      global.qrcode.stringToBytes = function (value) {
-        return Array.prototype.slice.call(new TextEncoder().encode(value));
-      };
-    } else {
-      global.qrcode.stringToBytes = function (value) {
-        return unescape(encodeURIComponent(value)).split('').map(function (character) { return character.charCodeAt(0); });
-      };
-    }
+    configureQrEncoding(global.qrcode);
 
     var messagesNode = document.getElementById('jqrg-messages');
     var messages = {};
@@ -245,6 +332,8 @@
     var presetDelete = document.getElementById('jqrg-preset-delete');
     var presetName = document.getElementById('jqrg-preset-name');
     var presetSave = document.getElementById('jqrg-preset-save');
+    var siteDefaultName = document.getElementById('jqrg-site-default-name');
+    var siteDefaultSave = document.getElementById('jqrg-site-default-save');
     var canvas = document.getElementById('jqrg-canvas');
     var placeholder = document.getElementById('jqrg-placeholder');
     var status = document.getElementById('jqrg-status');
@@ -263,6 +352,8 @@
     var centerImageSettings = document.getElementById('jqrg-center-image-settings');
     var centerImageSize = document.getElementById('jqrg-center-image-size');
     var centerImageSizeOutput = document.getElementById('jqrg-center-image-size-output');
+    var centerImageTrim = document.getElementById('jqrg-center-image-trim');
+    var centerImageTrimOutput = document.getElementById('jqrg-center-image-trim-output');
     var centerImageBackgroundMode = document.getElementById('jqrg-center-image-background-mode');
     var centerImageColorWrap = document.getElementById('jqrg-center-image-color-wrap');
     var centerImageBackgroundColor = document.getElementById('jqrg-center-image-background-color');
@@ -275,10 +366,11 @@
     var imageCache = null;
     var initialPayload = payloadOutput.textContent;
     var presetStorageKey = 'jqrg.visualPresets.v1';
+    var config = global.JQRG_CONFIG && typeof global.JQRG_CONFIG === 'object' ? global.JQRG_CONFIG : {};
     var builtInPresets = {
-      classic: sanitizeVisualPreset({foreground: '#0f172a', background: '#ffffff', errorLevel: 'M', outputSize: 512, quietZone: 4, frameRadius: 0, imageScale: 18, imageBackgroundMode: 'match', imageRadius: 12}),
-      print: sanitizeVisualPreset({foreground: '#000000', background: '#ffffff', errorLevel: 'H', outputSize: 1024, quietZone: 6, frameRadius: 0, imageScale: 16, imageBackgroundMode: 'match', imageRadius: 0}),
-      ocean: sanitizeVisualPreset({foreground: '#064e5b', background: '#ecfeff', errorLevel: 'Q', outputSize: 768, quietZone: 4, frameRadius: 10, imageScale: 18, imageBackgroundMode: 'custom', imageBackgroundColor: '#ffffff', imageRadius: 24})
+      classic: sanitizeVisualPreset({foreground: '#0f172a', background: '#ffffff', errorLevel: 'M', outputSize: 512, quietZone: 4, frameRadius: 0, imageScale: 18, imageBackgroundMode: 'match', imageRadius: 12, imageTrim: 0}),
+      print: sanitizeVisualPreset({foreground: '#000000', background: '#ffffff', errorLevel: 'H', outputSize: 1024, quietZone: 6, frameRadius: 0, imageScale: 16, imageBackgroundMode: 'match', imageRadius: 0, imageTrim: 0}),
+      ocean: sanitizeVisualPreset({foreground: '#064e5b', background: '#ecfeff', errorLevel: 'Q', outputSize: 768, quietZone: 4, frameRadius: 10, imageScale: 18, imageBackgroundMode: 'custom', imageBackgroundColor: '#ffffff', imageRadius: 24, imageTrim: 0})
     };
     var prefilledUrl = prefillUrlFromFragment(global.location.hash, global.location.origin);
     if (global.location.hash.startsWith('#jqrg_url=')) {
@@ -316,7 +408,8 @@
         imageScale: centerImageSize.value,
         imageBackgroundMode: centerImageBackgroundMode.value,
         imageBackgroundColor: centerImageBackgroundColor.value,
-        imageRadius: centerImageRadius.value
+        imageRadius: centerImageRadius.value,
+        imageTrim: centerImageTrim.value
       });
     }
 
@@ -324,6 +417,7 @@
       centerImageColorWrap.hidden = centerImageBackgroundMode.value !== 'custom';
       centerImageSizeOutput.textContent = centerImageSize.value + '%';
       centerImageRadiusOutput.textContent = centerImageRadius.value + '%';
+      centerImageTrimOutput.textContent = centerImageTrim.value + '%';
     }
 
     function updateContrastFeedback() {
@@ -351,6 +445,7 @@
       centerImageBackgroundMode.value = safe.imageBackgroundMode;
       centerImageBackgroundColor.value = safe.imageBackgroundColor;
       centerImageRadius.value = String(safe.imageRadius);
+      centerImageTrim.value = String(safe.imageTrim);
       updateCenterStyleVisibility();
       updateContrastFeedback();
     }
@@ -397,7 +492,7 @@
     }
 
     function markPresetModified(target) {
-      var visualControls = [foreground, background, errorLevel, size, margin, frameRadius, centerImageSize, centerImageBackgroundMode, centerImageBackgroundColor, centerImageRadius];
+      var visualControls = [foreground, background, errorLevel, size, margin, frameRadius, centerImageSize, centerImageTrim, centerImageBackgroundMode, centerImageBackgroundColor, centerImageRadius];
       if (visualControls.indexOf(target) < 0) return;
       presetSelect.value = '';
       presetDelete.disabled = true;
@@ -440,17 +535,6 @@
         : '';
       if (safeOuterRadius > 0) body = '<g clip-path="url(#jqrg-frame-clip)">' + body + '</g>';
       return '<svg xmlns="http://www.w3.org/2000/svg" width="' + outputSize + '" height="' + outputSize + '" viewBox="0 0 ' + total + ' ' + total + '" shape-rendering="crispEdges" role="img" aria-label="QR code">' + frameClip + body + '</svg>';
-    }
-
-    function roundedRect(context, x, y, width, height, radius) {
-      var safeRadius = Math.min(radius, width / 2, height / 2);
-      context.beginPath();
-      context.moveTo(x + safeRadius, y);
-      context.arcTo(x + width, y, x + width, y + height, safeRadius);
-      context.arcTo(x + width, y + height, x, y + height, safeRadius);
-      context.arcTo(x, y + height, x, y, safeRadius);
-      context.arcTo(x, y, x + width, y, safeRadius);
-      context.closePath();
     }
 
     function drawContainedImage(context, image, rect) {
@@ -508,22 +592,32 @@
       if (safeOuterRadius > 0) context.restore();
     }
 
-    function imageAsDataUrl(image) {
+    function trimCenterImage(image, manualPercent) {
       var width = image.naturalWidth || image.width;
       var height = image.naturalHeight || image.height;
       if (!width || !height) throw new Error('imageLoadFailed');
       var scale = Math.min(1, 512 / Math.max(width, height));
-      var surface = document.createElement('canvas');
-      surface.width = Math.max(1, Math.round(width * scale));
-      surface.height = Math.max(1, Math.round(height * scale));
-      var context = surface.getContext('2d');
+      var scan = document.createElement('canvas');
+      scan.width = Math.max(1, Math.round(width * scale));
+      scan.height = Math.max(1, Math.round(height * scale));
+      var context = scan.getContext('2d');
       if (!context) throw new Error('imageLoadFailed');
-      context.drawImage(image, 0, 0, surface.width, surface.height);
+      context.drawImage(image, 0, 0, scan.width, scan.height);
+      var pixels;
       try {
-        return surface.toDataURL('image/png');
+        pixels = context.getImageData(0, 0, scan.width, scan.height).data;
       } catch (error) {
         throw new Error('imageLoadFailed');
       }
+      var bounds = alphaTrimBounds(pixels, scan.width, scan.height, manualPercent);
+      if (!bounds) throw new Error('imageInvalid');
+      var output = document.createElement('canvas');
+      output.width = bounds.width;
+      output.height = bounds.height;
+      var outputContext = output.getContext('2d');
+      if (!outputContext) throw new Error('imageLoadFailed');
+      outputContext.drawImage(scan, bounds.x, bounds.y, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
+      return {image: output, dataUrl: output.toDataURL('image/png'), width: bounds.width, height: bounds.height};
     }
 
     function loadCenterImage(url) {
@@ -532,7 +626,7 @@
         var image = new Image();
         image.onload = function () {
           try {
-            imageCache = {url: url, image: image, dataUrl: imageAsDataUrl(image)};
+            imageCache = {url: url, image: image};
             resolve(imageCache);
           } catch (error) {
             reject(error);
@@ -596,12 +690,13 @@
         if (hasCenterImage) {
           var safeImageUrl = normalizeCenterImageUrl(centerImageUrl.value, global.location.href, global.location.origin);
           var loadedImage = await loadCenterImage(safeImageUrl);
+          var trimmedImage = trimCenterImage(loadedImage.image, parseInt(centerImageTrim.value, 10) || 0);
           var backgroundMode = centerImageBackgroundMode.value;
           centerAsset = {
-            image: loadedImage.image,
-            dataUrl: loadedImage.dataUrl,
-            width: loadedImage.image.naturalWidth || loadedImage.image.width,
-            height: loadedImage.image.naturalHeight || loadedImage.image.height,
+            image: trimmedImage.image,
+            dataUrl: trimmedImage.dataUrl,
+            width: trimmedImage.width,
+            height: trimmedImage.height,
             percentage: parseInt(centerImageSize.value, 10) || 18,
             backgroundMode: backgroundMode,
             backgroundColor: backgroundMode === 'custom' ? centerImageBackgroundColor.value : light,
@@ -609,6 +704,7 @@
           };
         }
         if (requestSequence !== generationSequence) return;
+        if (centerAsset) centerImageThumbnail.src = centerAsset.dataUrl;
         var outerRadius = parseInt(frameRadius.value, 10) || 0;
         drawCanvas(qr, outputSize, quietZone, dark, light, centerAsset, outerRadius);
         currentSvg = makeSvg(qr, outputSize, quietZone, dark, light, centerAsset, outerRadius);
@@ -667,6 +763,9 @@
     centerImageSize.addEventListener('input', function () {
       centerImageSizeOutput.textContent = centerImageSize.value + '%';
     });
+    centerImageTrim.addEventListener('input', function () {
+      centerImageTrimOutput.textContent = centerImageTrim.value + '%';
+    });
     centerImageRadius.addEventListener('input', function () {
       centerImageRadiusOutput.textContent = centerImageRadius.value + '%';
     });
@@ -704,6 +803,35 @@
       presetName.value = '';
       renderCustomPresets('custom:' + id);
       presetStatus('presetSaved', 'Custom preset saved in this browser.', false);
+    });
+    if (siteDefaultSave) siteDefaultSave.addEventListener('click', function () {
+      var selectedOption = presetSelect.options[presetSelect.selectedIndex];
+      var defaultName = presetSelect.value && selectedOption
+        ? selectedOption.textContent.trim()
+        : (messages.customSettings || 'Custom settings');
+      siteDefaultSave.disabled = true;
+      fetch(String(config.defaultEndpoint || ''), {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+        body: JSON.stringify({csrf_token: String(config.csrfToken || ''), name: defaultName, settings: currentVisualSettings()})
+      }).then(function (response) {
+        return response.json().catch(function () { return {}; }).then(function (payload) {
+          if (!response.ok || payload.success !== true) throw new Error(payload.error || 'defaultPresetFailed');
+          return payload;
+        });
+      }).then(function (payload) {
+        config.defaultPreset = payload.preset;
+        siteDefaultName.textContent = payload.preset.name;
+        presetStatus('defaultPresetSaved', 'Site Default Preset saved.', false);
+      }).catch(function (error) {
+        status.textContent = error && error.message && error.message !== 'defaultPresetFailed'
+          ? error.message
+          : (messages.defaultPresetFailed || 'The Site Default Preset could not be saved.');
+        status.classList.add('is-error');
+      }).finally(function () {
+        siteDefaultSave.disabled = false;
+      });
     });
     presetDelete.addEventListener('click', function () {
       if (!presetSelect.value.startsWith('custom:')) return;
@@ -785,9 +913,12 @@
         status.textContent = messages.copyFailed || 'Could not copy the payload.';
       }
     });
-    updateCenterStyleVisibility();
-    updateContrastFeedback();
     renderCustomPresets('');
+    if (config.defaultPreset && config.defaultPreset.settings) applyVisualSettings(config.defaultPreset.settings);
+    else {
+      updateCenterStyleVisibility();
+      updateContrastFeedback();
+    }
     if (read('jqrg-url').trim() !== '') scheduleGenerate(0);
   }
 

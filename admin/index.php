@@ -9,6 +9,10 @@ if (!$pdo instanceof PDO) {
     return;
 }
 adiwira_require_permission($pdo, 'plugin.qr-code-generator.codes.generate', false);
+$actorId = (int)($_SESSION['user_id'] ?? 0);
+$siteDefaultPreset = jqrg_site_default_preset($pdo);
+$canManageDefaultPreset = $actorId > 0 && function_exists('user_can')
+    && user_can($pdo, $actorId, 'plugin.qr-code-generator.presets.manage');
 
 $messages = [
     'empty' => jqrg_t('Enter content before generating a QR code.'),
@@ -34,6 +38,9 @@ $messages = [
     'presetDeleted' => jqrg_t('Custom preset deleted.'),
     'presetNameRequired' => jqrg_t('Enter a name for the custom preset.'),
     'presetStorageFailed' => jqrg_t('This browser could not save the custom preset.'),
+    'defaultPresetSaved' => jqrg_t('Site Default Preset saved.'),
+    'defaultPresetFailed' => jqrg_t('The Site Default Preset could not be saved.'),
+    'customSettings' => jqrg_t('Custom settings'),
     'ready' => jqrg_t('QR code ready: %d modules, %d characters.'),
     'copied' => jqrg_t('Payload copied.'),
     'copyFailed' => jqrg_t('Could not copy the payload.'),
@@ -122,6 +129,10 @@ $messages = [
       </div>
       <div class="jqrg-presets">
         <div class="jqrg-presets__head"><strong><?= jqrg_h(jqrg_t('Visual presets')) ?></strong><small><?= jqrg_h(jqrg_t('Presets include only visual settings. Payloads and selected images are never saved.')) ?></small></div>
+        <div class="jqrg-site-default">
+          <span><?= jqrg_h(jqrg_t('Site Default Preset')) ?>: <strong id="jqrg-site-default-name"><?= jqrg_h((string)$siteDefaultPreset['name']) ?></strong></span>
+          <?php if ($canManageDefaultPreset): ?><button id="jqrg-site-default-save" type="button"><?= jqrg_h(jqrg_t('Use as site default')) ?></button><?php endif; ?>
+        </div>
         <div class="jqrg-presets__apply">
           <select id="jqrg-preset-select" aria-label="<?= jqrg_h(jqrg_t('Visual preset')) ?>">
             <option value=""><?= jqrg_h(jqrg_t('Current settings')) ?></option>
@@ -153,6 +164,7 @@ $messages = [
           </div>
           <div class="jqrg-center-image__settings" id="jqrg-center-image-settings" hidden>
             <label class="jqrg-center-image__size"><span><?= jqrg_h(jqrg_t('Image scale')) ?> <output id="jqrg-center-image-size-output" for="jqrg-center-image-size">18%</output></span><input id="jqrg-center-image-size" type="range" min="10" max="25" step="1" value="18"></label>
+            <label class="jqrg-center-image__size"><span><?= jqrg_h(jqrg_t('Transparent edge trim')) ?> <output id="jqrg-center-image-trim-output" for="jqrg-center-image-trim">0%</output></span><input id="jqrg-center-image-trim" type="range" min="0" max="20" step="1" value="0"><small><?= jqrg_h(jqrg_t('Transparent edges are removed automatically. Increase this value to crop farther inward.')) ?></small></label>
             <label class="jqrg-field"><span><?= jqrg_h(jqrg_t('Image background')) ?></span><select id="jqrg-center-image-background-mode"><option value="match"><?= jqrg_h(jqrg_t('Match QR background')) ?></option><option value="custom"><?= jqrg_h(jqrg_t('Custom color')) ?></option><option value="transparent"><?= jqrg_h(jqrg_t('Transparent')) ?></option></select></label>
             <label class="jqrg-center-image__color" id="jqrg-center-image-color-wrap" hidden><span><?= jqrg_h(jqrg_t('Background color')) ?></span><input id="jqrg-center-image-background-color" type="color" value="#ffffff"></label>
             <label class="jqrg-center-image__size"><span><?= jqrg_h(jqrg_t('Corner radius')) ?> <output id="jqrg-center-image-radius-output" for="jqrg-center-image-radius">12%</output></span><input id="jqrg-center-image-radius" type="range" min="0" max="50" step="1" value="12"></label>

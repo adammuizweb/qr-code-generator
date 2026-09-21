@@ -1,6 +1,6 @@
 {
   "name": "qr-code-generator",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "title": "QR Code Generator",
   "description": "Create downloadable QR codes for text, links, email, phone, SMS, and Wi-Fi without sending payloads to an external service.",
   "author": "Adam Muiz",
@@ -27,6 +27,13 @@
       "supports_scope": false,
       "default_roles": ["admin"],
       "delegable": true
+    },
+    {
+      "key": "plugin.qr-code-generator.presets.manage",
+      "label": "Manage QR Site Default Preset",
+      "supports_scope": false,
+      "default_roles": ["admin"],
+      "delegable": true
     }
   ],
   "admin": {
@@ -36,6 +43,14 @@
         "file": "admin/index.php",
         "title": "QR Code Generator",
         "permission": "plugin.qr-code-generator.codes.generate",
+        "roles": ["admin"]
+      },
+      {
+        "route": "admin/tools/qr-code-generator/default-preset",
+        "file": "admin/default-preset.php",
+        "title": "Save QR Site Default Preset",
+        "hidden": true,
+        "permission": "plugin.qr-code-generator.presets.manage",
         "roles": ["admin"]
       }
     ],
@@ -54,6 +69,8 @@
       {"from": "assets/css/admin.css", "to": "static/plugins/qr-code-generator/admin.css"},
       {"from": "assets/vendor/qrcode.js", "to": "static/plugins/qr-code-generator/qrcode.js"},
       {"from": "assets/js/admin.js", "to": "static/plugins/qr-code-generator/admin.js"},
+      {"from": "assets/css/quick.css", "to": "static/plugins/qr-code-generator/quick.css"},
+      {"from": "assets/js/quick.js", "to": "static/plugins/qr-code-generator/quick.js"},
       {"from": "icon.svg", "to": "static/plugins/qr-code-generator/icon.svg"}
     ]
   },

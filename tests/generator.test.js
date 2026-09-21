@@ -14,6 +14,7 @@ function test(name, callback) {
 test('exports the browser-independent API', () => {
   assert.equal(typeof qr.buildPayload, 'function');
   assert.equal(typeof qr.contrastRatio, 'function');
+  assert.equal(typeof qr.renderBasicCanvas, 'function');
 });
 
 test('preserves plain text and UTF-8 content', () => {
@@ -67,17 +68,43 @@ test('sanitizes visual presets without payload or image data', () => {
   const preset = qr.sanitizeVisualPreset({
     foreground: '#123456', background: '#abcdef', errorLevel: 'H', outputSize: 1024,
     quietZone: 8, frameRadius: 16, imageScale: 25, imageBackgroundMode: 'transparent',
-    imageBackgroundColor: '#fedcba', imageRadius: 50, payload: 'secret', imageUrl: '/private/image'
+    imageBackgroundColor: '#fedcba', imageRadius: 50, imageTrim: 99, payload: 'secret', imageUrl: '/private/image'
   });
   assert.deepEqual(Object.keys(preset), [
     'foreground', 'background', 'errorLevel', 'outputSize', 'quietZone', 'frameRadius', 'imageScale',
-    'imageBackgroundMode', 'imageBackgroundColor', 'imageRadius'
+    'imageBackgroundMode', 'imageBackgroundColor', 'imageRadius', 'imageTrim'
   ]);
   assert.equal(preset.imageBackgroundMode, 'transparent');
   assert.equal(preset.frameRadius, 12);
   assert.equal(preset.imageRadius, 50);
+  assert.equal(preset.imageTrim, 20);
   assert.equal('payload' in preset, false);
   assert.equal('imageUrl' in preset, false);
+});
+
+test('auto-trims transparent image edges before bounded manual trimming', () => {
+  const pixels = new Uint8ClampedArray(12 * 12 * 4);
+  for (let y = 2; y <= 9; y += 1) {
+    for (let x = 2; x <= 9; x += 1) pixels[(y * 12 + x) * 4 + 3] = 255;
+  }
+  assert.deepEqual(qr.alphaTrimBounds(pixels, 12, 12, 0), {x: 2, y: 2, width: 8, height: 8});
+  assert.deepEqual(qr.alphaTrimBounds(pixels, 12, 12, 20), {x: 3, y: 3, width: 6, height: 6});
+  assert.equal(qr.alphaTrimBounds(new Uint8ClampedArray(4 * 3 * 4), 4, 3, 20), null);
+});
+
+test('renders a preset-driven QR canvas without browser DOM state', () => {
+  const calls = [];
+  const context = {
+    beginPath() {}, moveTo() {}, arcTo() {}, closePath() {}, clip() {}, save() {}, restore() {}, clearRect() {},
+    fillRect(x, y, width, height) { calls.push({x, y, width, height}); },
+    set fillStyle(value) {}
+  };
+  const canvas = {width: 0, height: 0, getContext: () => context};
+  const rendered = qr.renderBasicCanvas(canvas, 'https://example.com/', {outputSize: 256, frameRadius: 8}, encoder);
+  assert.equal(canvas.width, 256);
+  assert.equal(canvas.height, 256);
+  assert.ok(rendered.modules >= 21);
+  assert.ok(calls.length > 1);
 });
 
 test('reads same-origin prefill paths only from the URL fragment', () => {

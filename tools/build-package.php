@@ -32,7 +32,8 @@ register_shutdown_function(static function () use ($temporary): void {
 
 $packageFiles = [
     'LICENSE', 'README.md', 'THIRD_PARTY_NOTICES.md', 'icon.svg', 'plugin.json', 'plugin.php',
-    'admin/index.php', 'assets/css/admin.css', 'assets/js/admin.js', 'assets/vendor/qrcode.js',
+    'admin/index.php', 'admin/default-preset.php',
+    'assets/css/admin.css', 'assets/css/quick.css', 'assets/js/admin.js', 'assets/js/quick.js', 'assets/vendor/qrcode.js',
     'languages/de.php', 'languages/id.php',
 ];
 $files = [];
