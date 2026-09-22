@@ -7,6 +7,8 @@ $GLOBALS['_jqrg_locale'] = 'en';
 $GLOBALS['_jqrg_can_generate'] = true;
 $GLOBALS['_jqrg_can_manage'] = true;
 $GLOBALS['_jqrg_setting'] = '';
+$GLOBALS['_jqrg_category_permalink'] = '/category/fallback/';
+$GLOBALS['_jqrg_category_permalink_throws'] = false;
 
 define('PLUGIN_SYSTEM_LOADED', true);
 define('ADMIN_BASE_PATH', '/hidden-admin');
@@ -29,6 +31,11 @@ function user_can(PDO $pdo, int $userId, string $permission, array $context = []
 }
 function settings_get(PDO $pdo, string $key, ?string $default = null): ?string { return $GLOBALS['_jqrg_setting'] ?: $default; }
 function csrf_token(): string { return 'contract-token'; }
+function get_category_permalink(PDO $pdo, array $category, int $page = 1, string $query = ''): string
+{
+    if ($GLOBALS['_jqrg_category_permalink_throws']) throw new RuntimeException('permalink failure');
+    return (string)$GLOBALS['_jqrg_category_permalink'];
+}
 
 require_once $root . '/plugin.php';
 
@@ -67,7 +74,8 @@ $check(($presetPage['route'] ?? '') === JQRG_DEFAULT_PRESET_ROUTE
 $check(($navigation['page'] ?? '') === JQRG_ROUTE && ($navigation['parent'] ?? '') === 'tools', 'navigation points to the owned Tools route');
 $check(($manifest['dependencies']['js'] ?? null) === ['modal-helpers', 'media-selector'], 'Media Gallery dependencies use Core-owned asset IDs');
 $check(isset($GLOBALS['_jqrg_hooks']['admin_head']), 'route-scoped dashboard assets are registered');
-$check(isset($GLOBALS['_jqrg_hooks']['admin_content_row_actions']), 'published content row-action integration is registered');
+$check(isset($GLOBALS['_jqrg_hooks']['admin_content_row_actions']), 'content row-action integration is registered');
+$check(isset($GLOBALS['_jqrg_hooks']['admin_category_row_actions']), 'category row-action integration is registered');
 
 $pdo = new PDO('sqlite::memory:');
 $items = jqrg_content_row_actions([], ['title' => 'Public article'], [
@@ -78,6 +86,14 @@ $check(count($items) === 1
     && str_contains((string)($items[0]['url'] ?? ''), '/hidden-admin/?page=admin%2Ftools%2Fqr-code-generator')
     && str_contains((string)($items[0]['url'] ?? ''), '#jqrg_url=%2Farticle%2F')
     && !str_contains((string)($items[0]['url'] ?? ''), '&jqrg_url='), 'published content receives a browser-only permission-aware prefilled QR action');
+$privateItems = jqrg_content_row_actions([], ['title' => 'Private page'], [
+    'content_type' => 'page', 'actor_id' => 7, 'status' => 'private', 'is_public' => false, 'public_url' => '/private-page/',
+], $pdo);
+$scheduledItems = jqrg_content_row_actions([], ['title' => 'Scheduled Theme Content'], [
+    'content_type' => 'theme', 'actor_id' => 7, 'status' => 'scheduled', 'is_public' => false, 'public_url' => '/scheduled-theme/',
+], $pdo);
+$check(count($privateItems) === 1 && count($scheduledItems) === 1,
+    'private and scheduled content receive QR actions for their canonical paths');
 $check(jqrg_public_path('//evil.test/') === null && jqrg_public_path('https://evil.test/') === null
     && jqrg_public_path('/safe/%252e%252e/admin/') === null
     && jqrg_public_path('/%252f%252fevil.test/') === null
@@ -88,11 +104,49 @@ $check(jqrg_visual_settings_are_quick_safe(jqrg_sanitize_visual_settings([]))
     && !jqrg_visual_settings_are_quick_safe(jqrg_sanitize_visual_settings(['foreground' => '#777777', 'background' => '#888888'])), 'Site Default Preset requires scanner-safe contrast and polarity');
 $check(jqrg_content_row_actions([], ['title' => 'Draft'], [
     'content_type' => 'page', 'actor_id' => 7, 'status' => 'draft', 'is_public' => false, 'public_url' => '/draft/',
-], $pdo) === [], 'non-public content does not receive a QR action');
+], $pdo) === [] && jqrg_content_row_actions([], ['title' => 'Unknown'], [
+    'content_type' => 'page', 'actor_id' => 7, 'status' => 'unknown', 'is_public' => false, 'public_url' => '/unknown/',
+], $pdo) === [], 'draft and unknown content statuses do not receive a QR action');
+
+ob_start();
+jqrg_category_row_actions([
+    'name' => 'Localized <Category>',
+    'display_url' => '/de/kategorie/lokal/',
+], ['actor_id' => 7, 'can_update' => true], $pdo);
+$localizedCategoryAction = (string)ob_get_clean();
+$check(str_contains($localizedCategoryAction, '<span class="muted-divider">|</span>')
+    && str_contains($localizedCategoryAction, 'class="adam-ubah"')
+    && str_contains($localizedCategoryAction, '#jqrg_url=%2Fde%2Fkategorie%2Flokal%2F')
+    && str_contains($localizedCategoryAction, 'Localized &lt;Category&gt;')
+    && !str_contains($localizedCategoryAction, '&jqrg_url='),
+    'category actions preserve safe localized paths, escaping, and row-action separation');
+$GLOBALS['_jqrg_category_permalink'] = '/category/canonical-child/';
+ob_start();
+jqrg_category_row_actions(['name' => 'Fallback', 'display_url' => '//unsafe.test/'], [
+    'actor_id' => 7, 'can_update' => false,
+], $pdo);
+$fallbackCategoryAction = (string)ob_get_clean();
+$check(!str_contains($fallbackCategoryAction, 'muted-divider')
+    && str_contains($fallbackCategoryAction, '#jqrg_url=%2Fcategory%2Fcanonical-child%2F'),
+    'category actions use the canonical permalink fallback without a leading separator');
+$GLOBALS['_jqrg_category_permalink'] = '//unsafe.test/';
+ob_start();
+jqrg_category_row_actions(['name' => 'Unsafe'], ['actor_id' => 7, 'can_update' => false], $pdo);
+$check(ob_get_clean() === '', 'category actions reject unsafe display and canonical paths');
+$GLOBALS['_jqrg_category_permalink_throws'] = true;
+ob_start();
+jqrg_category_row_actions(['name' => 'Unavailable'], ['actor_id' => 7, 'can_update' => false], $pdo);
+$check(ob_get_clean() === '', 'category permalink failures fail closed without partial output');
+$GLOBALS['_jqrg_category_permalink_throws'] = false;
 $GLOBALS['_jqrg_can_generate'] = false;
 $check(jqrg_content_row_actions([], ['title' => 'Public page'], [
     'content_type' => 'page', 'actor_id' => 7, 'status' => 'published', 'is_public' => true, 'public_url' => '/page/',
 ], $pdo) === [], 'row action requires the plugin generation permission');
+ob_start();
+jqrg_category_row_actions(['name' => 'Denied', 'display_url' => '/category/denied/'], [
+    'actor_id' => 7, 'can_update' => false,
+], $pdo);
+$check(ob_get_clean() === '', 'category actions require the plugin generation permission');
 $GLOBALS['_jqrg_can_generate'] = true;
 
 $_GET['page'] = 'admin/tools/another-plugin';
@@ -116,6 +170,13 @@ $quickAssets = (string)ob_get_clean();
 $check(str_contains($quickAssets, '/static/plugins/qr-code-generator/quick.css?v=' . JQRG_VERSION)
     && str_contains($quickAssets, '/static/plugins/qr-code-generator/quick.js?v=' . JQRG_VERSION)
     && !str_contains($quickAssets, '/static/plugins/qr-code-generator/admin.css?v='), 'content lists load only quick-modal assets');
+$_GET['page'] = 'admin/categories/index';
+ob_start();
+jqrg_admin_assets();
+$categoryAssets = (string)ob_get_clean();
+$check(str_contains($categoryAssets, '/static/plugins/qr-code-generator/quick.css?v=' . JQRG_VERSION)
+    && str_contains($categoryAssets, '/static/plugins/qr-code-generator/quick.js?v=' . JQRG_VERSION)
+    && !str_contains($categoryAssets, '/static/plugins/qr-code-generator/admin.css?v='), 'category lists load quick-modal assets');
 
 $staticSources = [];
 foreach ($manifest['static']['copy'] ?? [] as $entry) {
@@ -132,6 +193,7 @@ $adminSource = (string)file_get_contents($root . '/admin/index.php');
 $presetEndpoint = (string)file_get_contents($root . '/admin/default-preset.php');
 $browserSource = (string)file_get_contents($root . '/assets/js/admin.js');
 $quickSource = (string)file_get_contents($root . '/assets/js/quick.js');
+$quickStyles = (string)file_get_contents($root . '/assets/css/quick.css');
 $check(str_contains($adminSource, "adiwira_require_permission(\$pdo, 'plugin.qr-code-generator.codes.generate', false)"), 'dashboard page enforces permission server-side');
 $check(substr_count($adminSource, 'role="tooltip"') === 6
     && str_contains($adminSource, 'id="jqrg-type-help"')
@@ -172,6 +234,9 @@ $check(str_contains($quickSource, "url.hash.startsWith('#jqrg_url=')")
     && str_contains($quickSource, 'restoreBackground()')
     && str_contains($quickSource, "role=\"dialog\"")
     && !preg_match('/\b(?:fetch|XMLHttpRequest|sendBeacon|WebSocket)\s*\(/', $quickSource), 'quick modal generates locally with image sharing and URL-copy fallback');
+$check(str_contains($quickStyles, 'page=admin%2Ftools%2Fqr-code-generator')
+    && substr_count($quickStyles, '/static/plugins/qr-code-generator/qr-code.svg') === 2,
+    'content and category QR row actions use the plugin-owned line icon');
 $check(strpos($browserSource, 'if (requestSequence !== generationSequence) return;')
     < strpos($browserSource, 'centerImageThumbnail.src = centerAsset.dataUrl'), 'stale image trimming cannot overwrite the current thumbnail');
 $check(str_contains($presetEndpoint, "adiwira_csrf_validate(")

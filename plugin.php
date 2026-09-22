@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 if (!defined('PLUGIN_SYSTEM_LOADED')) return;
 
-const JQRG_VERSION = '0.5.0';
+const JQRG_VERSION = '0.6.0';
 const JQRG_ROUTE = 'admin/tools/qr-code-generator';
 const JQRG_DEFAULT_PRESET_ROUTE = 'admin/tools/qr-code-generator/default-preset';
 const JQRG_DEFAULT_PRESET_SETTING = 'plugin_qr_code_generator_default_preset';
@@ -35,7 +35,7 @@ function jqrg_admin_assets(): void
 {
     $route = trim((string)($_GET['page'] ?? ''), '/');
     $generatorRoute = $route === JQRG_ROUTE;
-    $quickRoutes = ['admin/posts/index', 'admin/pages/index', 'admin/themes/index'];
+    $quickRoutes = ['admin/posts/index', 'admin/pages/index', 'admin/themes/index', 'admin/categories/index'];
     if (!$generatorRoute && !in_array($route, $quickRoutes, true)) return;
 
     $pdo = $GLOBALS['pdo'] ?? null;
@@ -164,7 +164,7 @@ function jqrg_content_row_actions(mixed $items, array $row, array $context, PDO 
 {
     if (!is_array($items)) $items = [];
     if (!in_array((string)($context['content_type'] ?? ''), ['article', 'page', 'theme'], true)
-        || ($context['is_public'] ?? false) !== true || (string)($context['status'] ?? '') !== 'published'
+        || !in_array((string)($context['status'] ?? ''), ['published', 'private', 'scheduled'], true)
         || !defined('ADMIN_BASE_PATH')) return $items;
     $actorId = (int)($context['actor_id'] ?? 0);
     if ($actorId < 1 || !function_exists('user_can')
@@ -184,5 +184,34 @@ function jqrg_content_row_actions(mixed $items, array $row, array $context, PDO 
     return $items;
 }
 
+function jqrg_category_row_actions(array $category, array $context, PDO $pdo): void
+{
+    if (!defined('ADMIN_BASE_PATH') || !function_exists('user_can')) return;
+
+    $actorId = (int)($context['actor_id'] ?? 0);
+    if ($actorId < 1 || !user_can($pdo, $actorId, 'plugin.qr-code-generator.codes.generate')) return;
+
+    $publicPath = jqrg_public_path((string)($category['display_url'] ?? ''));
+    if ($publicPath === null && function_exists('get_category_permalink')) {
+        try {
+            $publicPath = jqrg_public_path(get_category_permalink($pdo, $category));
+        } catch (Throwable) {
+            return;
+        }
+    }
+    if ($publicPath === null) return;
+
+    $name = trim((string)($category['name'] ?? ''));
+    $url = rtrim((string)ADMIN_BASE_PATH, '/') . '/?' . http_build_query([
+        'page' => JQRG_ROUTE,
+    ], '', '&', PHP_QUERY_RFC3986) . '#jqrg_url=' . rawurlencode($publicPath);
+
+    if (($context['can_update'] ?? false) === true) echo '<span class="muted-divider">|</span>';
+    echo '<a class="adam-ubah" href="' . jqrg_h($url) . '" title="'
+        . jqrg_h(jqrg_t('Create QR code for %s', $name !== '' ? $name : $publicPath)) . '">'
+        . jqrg_h(jqrg_t('QR')) . '</a>';
+}
+
 add_action('admin_head', 'jqrg_admin_assets');
+add_action('admin_category_row_actions', 'jqrg_category_row_actions');
 add_filter('admin_content_row_actions', 'jqrg_content_row_actions');

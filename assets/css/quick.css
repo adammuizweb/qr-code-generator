@@ -16,6 +16,8 @@
 .jqrg-quick__actions button:first-child { color: #fff; background: linear-gradient(120deg, #0e7490, #0369a1); }
 .jqrg-quick__actions button:disabled { opacity: .45; cursor: wait; }
 .jqrg-quick button:focus-visible { outline: 3px solid rgba(34, 211, 238, .35); outline-offset: 2px; }
+.row-actions a[href*="page=admin%2Ftools%2Fqr-code-generator"] { display: inline-flex; align-items: center; gap: .3rem; }
+.row-actions a[href*="page=admin%2Ftools%2Fqr-code-generator"]::before { content: ''; width: 16px; height: 16px; flex: 0 0 16px; background: currentColor; mask: url('/static/plugins/qr-code-generator/qr-code.svg') center / contain no-repeat; -webkit-mask: url('/static/plugins/qr-code-generator/qr-code.svg') center / contain no-repeat; }
 html.jqrg-quick-open { overflow: hidden; }
 html.theme-dark .jqrg-quick__panel { background: #0f1720; }
 @media (max-width: 520px) { .jqrg-quick { align-items: end; padding: .55rem; } .jqrg-quick__panel { max-height: calc(100vh - 1.1rem); overflow-y: auto; border-radius: 18px; } .jqrg-quick__canvas-wrap { padding: .7rem; } }
