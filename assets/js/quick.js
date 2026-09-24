@@ -4,9 +4,8 @@
   if (typeof document === 'undefined') return;
 
   function boot() {
-    var api = global.JyavaniQrGenerator;
     var config = global.JQRG_CONFIG || {};
-    if (!api || typeof api.renderBasicCanvas !== 'function' || typeof global.qrcode !== 'function') return;
+    var runtimePromise = null;
 
     var overlay = document.createElement('div');
     overlay.className = 'jqrg-quick';
@@ -38,6 +37,71 @@
     var previousFocus = null;
     var isolatedNodes = [];
     var modalSequence = 0;
+    var runtimeFallbackUrl = '';
+
+    function loadScript(source) {
+      return new Promise(function (resolve, reject) {
+        var script = document.createElement('script');
+        var settled = false;
+        var timeout = global.setTimeout(function () {
+          if (settled) return;
+          settled = true;
+          script.remove();
+          reject(new Error('runtime'));
+        }, 10000);
+        function finish(callback, value) {
+          if (settled) return;
+          settled = true;
+          global.clearTimeout(timeout);
+          callback(value);
+        }
+        script.src = source;
+        script.async = true;
+        script.onload = function () { finish(resolve); };
+        script.onerror = function () { finish(reject, new Error('runtime')); };
+        document.head.appendChild(script);
+      });
+    }
+
+    function loadRuntime() {
+      if (global.JyavaniQrGenerator && typeof global.JyavaniQrGenerator.renderBasicCanvas === 'function'
+          && typeof global.qrcode === 'function') return Promise.resolve(global.JyavaniQrGenerator);
+      if (runtimePromise) return runtimePromise;
+      var base = typeof config.assetBase === 'string' ? config.assetBase : '';
+      var version = encodeURIComponent(typeof config.assetVersion === 'string' ? config.assetVersion : '');
+      if (!/^\/static\/plugins\/qr-code-generator\/$/.test(base)) return Promise.reject(new Error('runtime'));
+      runtimePromise = loadScript(base + 'qrcode.js?v=' + version)
+        .then(function () { return loadScript(base + 'admin.js?v=' + version); })
+        .then(function () {
+          if (!global.JyavaniQrGenerator || typeof global.JyavaniQrGenerator.renderBasicCanvas !== 'function'
+              || typeof global.qrcode !== 'function') throw new Error('runtime');
+          return global.JyavaniQrGenerator;
+        })
+        .catch(function (error) {
+          runtimePromise = null;
+          throw error;
+        });
+      return runtimePromise;
+    }
+
+    function prefillUrlFromFragment(hash) {
+      var prefix = '#jqrg_url=';
+      var rawHash = String(hash || '');
+      if (!rawHash.startsWith(prefix)) return '';
+      var path;
+      try {
+        path = decodeURIComponent(rawHash.slice(prefix.length));
+      } catch (error) {
+        return '';
+      }
+      if (!path || path.length > 2048 || path[0] !== '/' || path.startsWith('//') || /[\\\x00-\x1F\x7F]/.test(path)) return '';
+      try {
+        var parsed = new URL(path, global.location.origin);
+        return parsed.origin === global.location.origin ? parsed.href : '';
+      } catch (error) {
+        return '';
+      }
+    }
 
     closeButton.setAttribute('aria-label', messages.close || 'Close');
     closeButton.textContent = '\u00d7';
@@ -95,6 +159,8 @@
       overlay.hidden = true;
       document.documentElement.classList.remove('jqrg-quick-open');
       payload = '';
+      runtimeFallbackUrl = '';
+      downloadButton.textContent = messages.download || 'Download';
       restoreBackground();
       if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
       previousFocus = null;
@@ -103,26 +169,34 @@
     function open(anchor, url) {
       previousFocus = anchor;
       modalSequence += 1;
-      payload = api.prefillUrlFromFragment(url.hash, global.location.origin);
+      var openSequence = modalSequence;
+      payload = prefillUrlFromFragment(url.hash);
       if (!payload) return;
       overlay.hidden = false;
       document.documentElement.classList.add('jqrg-quick-open');
       status.textContent = messages.preparing || 'Preparing QR code...';
       status.classList.remove('is-error');
       urlOutput.textContent = payload;
+      runtimeFallbackUrl = '';
+      downloadButton.textContent = messages.download || 'Download';
       shareButton.disabled = true;
       downloadButton.disabled = true;
-      try {
+      closeButton.focus();
+      isolateBackground();
+      loadRuntime().then(function (api) {
+        if (openSequence !== modalSequence || overlay.hidden) return;
         api.renderBasicCanvas(canvas, payload, config.defaultPreset ? config.defaultPreset.settings : {}, global.qrcode);
         status.textContent = messages.ready || 'QR code ready.';
         shareButton.disabled = false;
         downloadButton.disabled = false;
-      } catch (error) {
+      }).catch(function () {
+        if (openSequence !== modalSequence || overlay.hidden) return;
         status.textContent = messages.shareFailed || 'The QR code could not be generated.';
         status.classList.add('is-error');
-      }
-      closeButton.focus();
-      isolateBackground();
+        runtimeFallbackUrl = url.href;
+        downloadButton.textContent = messages.openGenerator || 'Open generator';
+        downloadButton.disabled = false;
+      });
     }
 
     document.addEventListener('click', function (event) {
@@ -161,6 +235,10 @@
     });
 
     downloadButton.addEventListener('click', function () {
+      if (runtimeFallbackUrl) {
+        global.open(runtimeFallbackUrl, '_blank', 'noopener');
+        return;
+      }
       if (!payload) return;
       canvasBlob().then(function (blob) {
         var url = URL.createObjectURL(blob);

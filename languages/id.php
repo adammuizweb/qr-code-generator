@@ -120,6 +120,7 @@ return [
     'Generated locally with the Site Default Preset.' => 'Dibuat secara lokal dengan Preset Default Situs.',
     'Share' => 'Bagikan',
     'Download' => 'Unduh',
+    'Open generator' => 'Buka generator',
     'Close' => 'Tutup',
     'Preparing QR code...' => 'Menyiapkan kode QR...',
     'QR code ready.' => 'Kode QR siap.',

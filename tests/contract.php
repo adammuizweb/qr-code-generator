@@ -50,7 +50,7 @@ $manifest = json_decode($manifestJson, true, 512, JSON_THROW_ON_ERROR);
 $manifestObject = json_decode($manifestJson, false, 512, JSON_THROW_ON_ERROR);
 $check(($manifest['name'] ?? null) === 'qr-code-generator', 'plugin slug is stable');
 $check(($manifest['version'] ?? null) === JQRG_VERSION, 'manifest and runtime versions match');
-$check(($manifest['requires']['jyavani'] ?? null) === '>=2.3.147', 'minimum Core version provides content row actions and isolated media selection');
+$check(($manifest['requires']['jyavani'] ?? null) === '>=2.3.152', 'minimum Core version provides validated asset detail actions');
 $check(($manifestObject->requires->plugins ?? null) instanceof stdClass, 'plugin dependencies use an object map');
 
 $permission = $manifest['permissions'][0] ?? [];
@@ -76,6 +76,7 @@ $check(($manifest['dependencies']['js'] ?? null) === ['modal-helpers', 'media-se
 $check(isset($GLOBALS['_jqrg_hooks']['admin_head']), 'route-scoped dashboard assets are registered');
 $check(isset($GLOBALS['_jqrg_hooks']['admin_content_row_actions']), 'content row-action integration is registered');
 $check(isset($GLOBALS['_jqrg_hooks']['admin_category_row_actions']), 'category row-action integration is registered');
+$check(isset($GLOBALS['_jqrg_hooks']['admin_asset_detail_actions']), 'asset detail integration is registered');
 
 $pdo = new PDO('sqlite::memory:');
 $items = jqrg_content_row_actions([], ['title' => 'Public article'], [
@@ -149,11 +150,38 @@ jqrg_category_row_actions(['name' => 'Denied', 'display_url' => '/category/denie
 $check(ob_get_clean() === '', 'category actions require the plugin generation permission');
 $GLOBALS['_jqrg_can_generate'] = true;
 
+$assetItems = jqrg_asset_detail_actions([], [
+    'schema' => 1, 'resource' => 'media', 'surface' => 'admin.media.detail', 'actor_id' => 7,
+    'title' => 'Public image', 'filename' => 'image.jpg', 'is_public' => true,
+    'visibility' => 'public', 'storage_disk' => 'public', 'access_scope' => 'public',
+    'public_url' => '/static/img/image.jpg',
+], $pdo);
+$check(count($assetItems) === 1
+    && ($assetItems[0]['key'] ?? '') === 'qr-code-generator.create'
+    && str_contains((string)($assetItems[0]['url'] ?? ''), '#jqrg_url=%2Fstatic%2Fimg%2Fimage.jpg'),
+    'public Media detail receives a browser-only prefilled QR action');
+foreach (['visibility', 'storage_disk', 'access_scope'] as $restrictedField) {
+    $context = [
+        'schema' => 1, 'resource' => 'file', 'surface' => 'admin.file.modal.detail', 'actor_id' => 7,
+        'title' => 'Restricted file', 'filename' => 'file.pdf', 'is_public' => true,
+        'visibility' => 'public', 'storage_disk' => 'public', 'access_scope' => 'public',
+        'public_url' => '/static/files/file.pdf',
+    ];
+    $context[$restrictedField] = 'private';
+    $check(jqrg_asset_detail_actions([], $context, $pdo) === [],
+        'asset detail rejects nonpublic ' . $restrictedField);
+}
+$check(jqrg_asset_detail_actions([], [
+    'schema' => 1, 'resource' => 'file', 'surface' => 'admin.file.detail', 'actor_id' => 7,
+    'is_public' => false, 'visibility' => 'private', 'storage_disk' => 'private', 'access_scope' => 'editorial',
+    'public_url' => null,
+], $pdo) === [], 'protected File detail does not receive a QR action');
+
 $_GET['page'] = 'admin/tools/another-plugin';
 ob_start();
 jqrg_admin_assets();
 $unrelatedAssets = (string)ob_get_clean();
-$check($unrelatedAssets === '', 'assets do not load on unrelated dashboard routes');
+$check($unrelatedAssets === '', 'assets do not load without an authenticated actor');
 $_GET['page'] = JQRG_ROUTE;
 $_SESSION['user_id'] = 7;
 ob_start();
@@ -163,13 +191,24 @@ $check(str_contains($ownedAssets, '/static/plugins/qr-code-generator/admin.css?v
     && str_contains($ownedAssets, '/static/plugins/qr-code-generator/qrcode.js?v=' . JQRG_VERSION)
     && str_contains($ownedAssets, '/static/plugins/qr-code-generator/admin.js?v=' . JQRG_VERSION)
     && str_contains($ownedAssets, 'JQRG_CONFIG'), 'owned route loads each versioned static asset and bounded configuration');
+$_GET['page'] = 'admin/tools/another-plugin';
+ob_start();
+jqrg_admin_assets();
+$sharedQuickAssets = (string)ob_get_clean();
+$check(str_contains($sharedQuickAssets, '/static/plugins/qr-code-generator/quick.css?v=' . JQRG_VERSION)
+    && str_contains($sharedQuickAssets, '/static/plugins/qr-code-generator/quick.js?v=' . JQRG_VERSION)
+    && !str_contains($sharedQuickAssets, '/static/plugins/qr-code-generator/admin.css?v=')
+    && !str_contains($sharedQuickAssets, '/static/plugins/qr-code-generator/qrcode.js?v=')
+    && !str_contains($sharedQuickAssets, '/static/plugins/qr-code-generator/admin.js?v='),
+    'authorized dashboard routes load only the lightweight quick runtime for reusable asset detail modals');
 $_GET['page'] = 'admin/posts/index';
 ob_start();
 jqrg_admin_assets();
 $quickAssets = (string)ob_get_clean();
 $check(str_contains($quickAssets, '/static/plugins/qr-code-generator/quick.css?v=' . JQRG_VERSION)
     && str_contains($quickAssets, '/static/plugins/qr-code-generator/quick.js?v=' . JQRG_VERSION)
-    && !str_contains($quickAssets, '/static/plugins/qr-code-generator/admin.css?v='), 'content lists load only quick-modal assets');
+    && !str_contains($quickAssets, '/static/plugins/qr-code-generator/qrcode.js?v=')
+    && !str_contains($quickAssets, '/static/plugins/qr-code-generator/admin.js?v='), 'content lists load only lightweight quick-modal assets');
 $_GET['page'] = 'admin/categories/index';
 ob_start();
 jqrg_admin_assets();
@@ -177,6 +216,15 @@ $categoryAssets = (string)ob_get_clean();
 $check(str_contains($categoryAssets, '/static/plugins/qr-code-generator/quick.css?v=' . JQRG_VERSION)
     && str_contains($categoryAssets, '/static/plugins/qr-code-generator/quick.js?v=' . JQRG_VERSION)
     && !str_contains($categoryAssets, '/static/plugins/qr-code-generator/admin.css?v='), 'category lists load quick-modal assets');
+foreach (['admin/media/index', 'admin/file/index'] as $assetRoute) {
+    $_GET['page'] = $assetRoute;
+    ob_start();
+    jqrg_admin_assets();
+    $assetManagerAssets = (string)ob_get_clean();
+    $check(str_contains($assetManagerAssets, '/static/plugins/qr-code-generator/quick.css?v=' . JQRG_VERSION)
+        && str_contains($assetManagerAssets, '/static/plugins/qr-code-generator/quick.js?v=' . JQRG_VERSION),
+        $assetRoute . ' loads quick-modal assets for dynamically opened details');
+}
 
 $staticSources = [];
 foreach ($manifest['static']['copy'] ?? [] as $entry) {
@@ -226,6 +274,10 @@ $check(!preg_match('/\b(?:sessionStorage|indexedDB)\b/', $browserSource)
     && !str_contains($browserSource, 'localStorage.setItem(presetStorageKey, currentPayload)')
     && !str_contains($browserSource, 'localStorage.setItem(presetStorageKey, centerImageUrl'), 'browser storage never receives payloads or selected image URLs');
 $check(str_contains($quickSource, "url.hash.startsWith('#jqrg_url=')")
+    && str_contains($quickSource, "loadScript(base + 'qrcode.js?v='")
+    && str_contains($quickSource, "loadScript(base + 'admin.js?v='")
+    && str_contains($quickSource, '}, 10000)')
+    && str_contains($quickSource, "global.open(runtimeFallbackUrl, '_blank', 'noopener')")
     && str_contains($quickSource, 'navigator.canShare({files: [file]})')
     && str_contains($quickSource, 'navigator.clipboard.writeText(value)')
     && str_contains($quickSource, 'var sharePayload = payload')
@@ -235,8 +287,9 @@ $check(str_contains($quickSource, "url.hash.startsWith('#jqrg_url=')")
     && str_contains($quickSource, "role=\"dialog\"")
     && !preg_match('/\b(?:fetch|XMLHttpRequest|sendBeacon|WebSocket)\s*\(/', $quickSource), 'quick modal generates locally with image sharing and URL-copy fallback');
 $check(str_contains($quickStyles, 'page=admin%2Ftools%2Fqr-code-generator')
-    && substr_count($quickStyles, '/static/plugins/qr-code-generator/qr-code.svg') === 2,
-    'content and category QR row actions use the plugin-owned line icon');
+    && substr_count($quickStyles, '/static/plugins/qr-code-generator/qr-code.svg') === 4
+    && str_contains($quickStyles, '.asset-detail-extension-action[href*="page=admin%2Ftools%2Fqr-code-generator"]::before'),
+    'content, category, and asset QR actions use the plugin-owned line icon');
 $check(strpos($browserSource, 'if (requestSequence !== generationSequence) return;')
     < strpos($browserSource, 'centerImageThumbnail.src = centerAsset.dataUrl'), 'stale image trimming cannot overwrite the current thumbnail');
 $check(str_contains($presetEndpoint, "adiwira_csrf_validate(")

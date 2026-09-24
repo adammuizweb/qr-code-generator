@@ -120,6 +120,7 @@ return [
     'Generated locally with the Site Default Preset.' => 'Lokal mit der Standardvorlage der Website erstellt.',
     'Share' => 'Teilen',
     'Download' => 'Herunterladen',
+    'Open generator' => 'Generator öffnen',
     'Close' => 'Schließen',
     'Preparing QR code...' => 'QR-Code wird vorbereitet...',
     'QR code ready.' => 'QR-Code ist bereit.',

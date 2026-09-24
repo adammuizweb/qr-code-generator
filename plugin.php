@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 if (!defined('PLUGIN_SYSTEM_LOADED')) return;
 
-const JQRG_VERSION = '0.6.0';
+const JQRG_VERSION = '0.7.0';
 const JQRG_ROUTE = 'admin/tools/qr-code-generator';
 const JQRG_DEFAULT_PRESET_ROUTE = 'admin/tools/qr-code-generator/default-preset';
 const JQRG_DEFAULT_PRESET_SETTING = 'plugin_qr_code_generator_default_preset';
@@ -35,8 +35,7 @@ function jqrg_admin_assets(): void
 {
     $route = trim((string)($_GET['page'] ?? ''), '/');
     $generatorRoute = $route === JQRG_ROUTE;
-    $quickRoutes = ['admin/posts/index', 'admin/pages/index', 'admin/themes/index', 'admin/categories/index'];
-    if (!$generatorRoute && !in_array($route, $quickRoutes, true)) return;
+    if ($route === '') return;
 
     $pdo = $GLOBALS['pdo'] ?? null;
     $actorId = (int)($_SESSION['user_id'] ?? 0);
@@ -48,6 +47,8 @@ function jqrg_admin_assets(): void
     $defaultPreset = jqrg_site_default_preset($pdo);
     $canManageDefault = user_can($pdo, $actorId, 'plugin.qr-code-generator.presets.manage');
     $config = [
+        'assetBase' => $base,
+        'assetVersion' => JQRG_VERSION,
         'defaultPreset' => $defaultPreset,
         'canManageDefault' => $canManageDefault,
         'defaultEndpoint' => $canManageDefault ? rtrim((string)ADMIN_BASE_PATH, '/') . '/?' . http_build_query([
@@ -61,6 +62,7 @@ function jqrg_admin_assets(): void
             'quickDescription' => jqrg_t('Generated locally with the Site Default Preset.'),
             'share' => jqrg_t('Share'),
             'download' => jqrg_t('Download'),
+            'openGenerator' => jqrg_t('Open generator'),
             'close' => jqrg_t('Close'),
             'preparing' => jqrg_t('Preparing QR code...'),
             'ready' => jqrg_t('QR code ready.'),
@@ -71,9 +73,12 @@ function jqrg_admin_assets(): void
     ];
     echo '<script>window.JQRG_CONFIG=' . json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';</script>';
     echo '<link rel="stylesheet" href="' . $base . ($generatorRoute ? 'admin.css' : 'quick.css') . '?v=' . $version . '">';
-    echo '<script defer src="' . $base . 'qrcode.js?v=' . $version . '"></script>';
-    echo '<script defer src="' . $base . 'admin.js?v=' . $version . '"></script>';
-    if (!$generatorRoute) echo '<script defer src="' . $base . 'quick.js?v=' . $version . '"></script>';
+    if ($generatorRoute) {
+        echo '<script defer src="' . $base . 'qrcode.js?v=' . $version . '"></script>';
+        echo '<script defer src="' . $base . 'admin.js?v=' . $version . '"></script>';
+    } else {
+        echo '<script defer src="' . $base . 'quick.js?v=' . $version . '"></script>';
+    }
 }
 
 function jqrg_sanitize_visual_settings(mixed $value): array
@@ -212,6 +217,43 @@ function jqrg_category_row_actions(array $category, array $context, PDO $pdo): v
         . jqrg_h(jqrg_t('QR')) . '</a>';
 }
 
+function jqrg_asset_detail_actions(mixed $items, array $context, PDO $pdo): array
+{
+    if (!is_array($items)) $items = [];
+    if (($context['schema'] ?? null) !== 1
+        || !in_array((string)($context['resource'] ?? ''), ['media', 'file'], true)
+        || !in_array((string)($context['surface'] ?? ''), [
+            'admin.media.detail',
+            'admin.media.modal.detail',
+            'admin.file.detail',
+            'admin.file.modal.detail',
+        ], true)
+        || ($context['is_public'] ?? false) !== true
+        || (string)($context['visibility'] ?? '') !== 'public'
+        || (string)($context['storage_disk'] ?? '') !== 'public'
+        || (string)($context['access_scope'] ?? '') !== 'public'
+        || !defined('ADMIN_BASE_PATH')) return $items;
+
+    $actorId = (int)($context['actor_id'] ?? 0);
+    if ($actorId < 1 || !function_exists('user_can')
+        || !user_can($pdo, $actorId, 'plugin.qr-code-generator.codes.generate')) return $items;
+    $publicPath = jqrg_public_path((string)($context['public_url'] ?? ''));
+    if ($publicPath === null) return $items;
+
+    $name = trim((string)($context['title'] ?? ''));
+    if ($name === '') $name = trim((string)($context['filename'] ?? ''));
+    $items[] = [
+        'key' => 'qr-code-generator.create',
+        'label' => jqrg_t('QR'),
+        'url' => rtrim((string)ADMIN_BASE_PATH, '/') . '/?' . http_build_query([
+            'page' => JQRG_ROUTE,
+        ], '', '&', PHP_QUERY_RFC3986) . '#jqrg_url=' . rawurlencode($publicPath),
+        'title' => jqrg_t('Create QR code for %s', $name !== '' ? $name : $publicPath),
+    ];
+    return $items;
+}
+
 add_action('admin_head', 'jqrg_admin_assets');
 add_action('admin_category_row_actions', 'jqrg_category_row_actions');
 add_filter('admin_content_row_actions', 'jqrg_content_row_actions');
+add_filter('admin_asset_detail_actions', 'jqrg_asset_detail_actions');
