@@ -217,6 +217,7 @@
       if (overlay.hidden) return;
       if (event.key === 'Escape') {
         event.preventDefault();
+        event.stopImmediatePropagation();
         close();
         return;
       }
@@ -232,7 +233,7 @@
         event.preventDefault();
         first.focus();
       }
-    });
+    }, true);
 
     downloadButton.addEventListener('click', function () {
       if (runtimeFallbackUrl) {

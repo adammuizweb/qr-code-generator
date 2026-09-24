@@ -3,10 +3,12 @@ declare(strict_types=1);
 
 if (!defined('PLUGIN_SYSTEM_LOADED')) return;
 
-const JQRG_VERSION = '0.7.0';
+const JQRG_VERSION = '0.8.0';
 const JQRG_ROUTE = 'admin/tools/qr-code-generator';
+const JQRG_SETTINGS_ROUTE = 'admin/tools/qr-code-generator/settings';
 const JQRG_DEFAULT_PRESET_ROUTE = 'admin/tools/qr-code-generator/default-preset';
 const JQRG_DEFAULT_PRESET_SETTING = 'plugin_qr_code_generator_default_preset';
+const JQRG_SETTINGS_SETTING = 'plugin_qr_code_generator_settings';
 
 function jqrg_h(mixed $value): string
 {
@@ -35,17 +37,23 @@ function jqrg_admin_assets(): void
 {
     $route = trim((string)($_GET['page'] ?? ''), '/');
     $generatorRoute = $route === JQRG_ROUTE;
+    $settingsRoute = $route === JQRG_SETTINGS_ROUTE;
     if ($route === '') return;
 
     $pdo = $GLOBALS['pdo'] ?? null;
     $actorId = (int)($_SESSION['user_id'] ?? 0);
-    if (!$pdo instanceof PDO || $actorId < 1 || !function_exists('user_can')
-        || !user_can($pdo, $actorId, 'plugin.qr-code-generator.codes.generate')) return;
+    if (!$pdo instanceof PDO || $actorId < 1 || !function_exists('user_can')) return;
+    $canGenerate = user_can($pdo, $actorId, 'plugin.qr-code-generator.codes.generate');
+    $canManageDefault = user_can($pdo, $actorId, 'plugin.qr-code-generator.presets.manage');
+    if (($settingsRoute && !$canManageDefault) || (!$settingsRoute && !$canGenerate)) return;
 
     $base = '/static/plugins/qr-code-generator/';
     $version = rawurlencode(JQRG_VERSION);
+    if ($settingsRoute) {
+        echo '<link rel="stylesheet" href="' . $base . 'admin.css?v=' . $version . '">';
+        return;
+    }
     $defaultPreset = jqrg_site_default_preset($pdo);
-    $canManageDefault = user_can($pdo, $actorId, 'plugin.qr-code-generator.presets.manage');
     $config = [
         'assetBase' => $base,
         'assetVersion' => JQRG_VERSION,
@@ -79,6 +87,56 @@ function jqrg_admin_assets(): void
     } else {
         echo '<script defer src="' . $base . 'quick.js?v=' . $version . '"></script>';
     }
+}
+
+function jqrg_action_setting_defaults(): array
+{
+    return [
+        'post' => true,
+        'page' => true,
+        'theme_content' => true,
+        'category' => true,
+        'media' => true,
+        'file' => true,
+    ];
+}
+
+function jqrg_action_settings(PDO $pdo): array
+{
+    $settings = jqrg_action_setting_defaults();
+    if (!function_exists('settings_get')) return $settings;
+    $raw = settings_get($pdo, JQRG_SETTINGS_SETTING, '');
+    if (!is_string($raw) || $raw === '' || strlen($raw) > 4096) return $settings;
+    try {
+        $stored = json_decode($raw, true, 16, JSON_THROW_ON_ERROR);
+    } catch (Throwable) {
+        return $settings;
+    }
+    if (!is_array($stored) || ($stored['schema'] ?? null) !== 1 || !is_array($stored['actions'] ?? null)) {
+        return $settings;
+    }
+    foreach ($settings as $key => $enabled) {
+        if (is_bool($stored['actions'][$key] ?? null)) $settings[$key] = $stored['actions'][$key];
+    }
+    return $settings;
+}
+
+function jqrg_action_enabled(PDO $pdo, string $resource): bool
+{
+    $settings = jqrg_action_settings($pdo);
+    return ($settings[$resource] ?? false) === true;
+}
+
+function jqrg_save_action_settings(PDO $pdo, mixed $submitted): bool
+{
+    if (!function_exists('settings_set')) return false;
+    $submitted = is_array($submitted) ? $submitted : [];
+    $actions = [];
+    foreach (jqrg_action_setting_defaults() as $key => $enabled) {
+        $actions[$key] = isset($submitted[$key]) && $submitted[$key] === '1';
+    }
+    $encoded = json_encode(['schema' => 1, 'actions' => $actions], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    return settings_set($pdo, JQRG_SETTINGS_SETTING, $encoded, 1);
 }
 
 function jqrg_sanitize_visual_settings(mixed $value): array
@@ -168,7 +226,13 @@ function jqrg_public_path(string $url): ?string
 function jqrg_content_row_actions(mixed $items, array $row, array $context, PDO $pdo): array
 {
     if (!is_array($items)) $items = [];
-    if (!in_array((string)($context['content_type'] ?? ''), ['article', 'page', 'theme'], true)
+    $resource = match ((string)($context['content_type'] ?? '')) {
+        'article' => 'post',
+        'page' => 'page',
+        'theme' => 'theme_content',
+        default => null,
+    };
+    if ($resource === null || !jqrg_action_enabled($pdo, $resource)
         || !in_array((string)($context['status'] ?? ''), ['published', 'private', 'scheduled'], true)
         || !defined('ADMIN_BASE_PATH')) return $items;
     $actorId = (int)($context['actor_id'] ?? 0);
@@ -191,7 +255,7 @@ function jqrg_content_row_actions(mixed $items, array $row, array $context, PDO 
 
 function jqrg_category_row_actions(array $category, array $context, PDO $pdo): void
 {
-    if (!defined('ADMIN_BASE_PATH') || !function_exists('user_can')) return;
+    if (!defined('ADMIN_BASE_PATH') || !function_exists('user_can') || !jqrg_action_enabled($pdo, 'category')) return;
 
     $actorId = (int)($context['actor_id'] ?? 0);
     if ($actorId < 1 || !user_can($pdo, $actorId, 'plugin.qr-code-generator.codes.generate')) return;
@@ -220,8 +284,10 @@ function jqrg_category_row_actions(array $category, array $context, PDO $pdo): v
 function jqrg_asset_detail_actions(mixed $items, array $context, PDO $pdo): array
 {
     if (!is_array($items)) $items = [];
+    $resource = (string)($context['resource'] ?? '');
     if (($context['schema'] ?? null) !== 1
-        || !in_array((string)($context['resource'] ?? ''), ['media', 'file'], true)
+        || !in_array($resource, ['media', 'file'], true)
+        || !jqrg_action_enabled($pdo, $resource)
         || !in_array((string)($context['surface'] ?? ''), [
             'admin.media.detail',
             'admin.media.modal.detail',

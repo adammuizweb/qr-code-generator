@@ -6,7 +6,7 @@ $GLOBALS['_jqrg_hooks'] = [];
 $GLOBALS['_jqrg_locale'] = 'en';
 $GLOBALS['_jqrg_can_generate'] = true;
 $GLOBALS['_jqrg_can_manage'] = true;
-$GLOBALS['_jqrg_setting'] = '';
+$GLOBALS['_jqrg_settings'] = [];
 $GLOBALS['_jqrg_category_permalink'] = '/category/fallback/';
 $GLOBALS['_jqrg_category_permalink_throws'] = false;
 
@@ -29,7 +29,12 @@ function user_can(PDO $pdo, int $userId, string $permission, array $context = []
     if ($permission === 'plugin.qr-code-generator.presets.manage') return $GLOBALS['_jqrg_can_manage'];
     return false;
 }
-function settings_get(PDO $pdo, string $key, ?string $default = null): ?string { return $GLOBALS['_jqrg_setting'] ?: $default; }
+function settings_get(PDO $pdo, string $key, ?string $default = null): ?string { return $GLOBALS['_jqrg_settings'][$key] ?? $default; }
+function settings_set(PDO $pdo, string $key, string $value, int $autoload = 1): bool
+{
+    $GLOBALS['_jqrg_settings'][$key] = $value;
+    return true;
+}
 function csrf_token(): string { return 'contract-token'; }
 function get_category_permalink(PDO $pdo, array $category, int $page = 1, string $query = ''): string
 {
@@ -55,9 +60,13 @@ $check(($manifestObject->requires->plugins ?? null) instanceof stdClass, 'plugin
 
 $permission = $manifest['permissions'][0] ?? [];
 $presetPermission = $manifest['permissions'][1] ?? [];
-$page = $manifest['admin']['pages'][0] ?? [];
-$presetPage = $manifest['admin']['pages'][1] ?? [];
+$pagesByRoute = [];
+foreach ($manifest['admin']['pages'] ?? [] as $manifestPage) $pagesByRoute[$manifestPage['route'] ?? ''] = $manifestPage;
+$page = $pagesByRoute[JQRG_ROUTE] ?? [];
+$settingsPage = $pagesByRoute[JQRG_SETTINGS_ROUTE] ?? [];
+$presetPage = $pagesByRoute[JQRG_DEFAULT_PRESET_ROUTE] ?? [];
 $navigation = $manifest['admin']['nav'][0] ?? [];
+$settingsNavigation = $manifest['admin']['nav'][1] ?? [];
 $check(($permission['key'] ?? '') === 'plugin.qr-code-generator.codes.generate'
     && ($permission['default_roles'] ?? null) === ['admin']
     && ($permission['delegable'] ?? null) === true, 'generation permission is declared and delegable');
@@ -67,11 +76,16 @@ $check(($presetPermission['key'] ?? '') === 'plugin.qr-code-generator.presets.ma
 $check(($page['route'] ?? '') === JQRG_ROUTE
     && ($page['file'] ?? '') === 'admin/index.php'
     && ($page['permission'] ?? '') === $permission['key'], 'dashboard route uses the declared permission');
+$check(($settingsPage['file'] ?? '') === 'admin/settings.php'
+    && ($settingsPage['hidden'] ?? null) === true
+    && ($settingsPage['permission'] ?? '') === $presetPermission['key'], 'global settings page is hidden and permission guarded');
 $check(($presetPage['route'] ?? '') === JQRG_DEFAULT_PRESET_ROUTE
     && ($presetPage['file'] ?? '') === 'admin/default-preset.php'
     && ($presetPage['hidden'] ?? null) === true
     && ($presetPage['permission'] ?? '') === $presetPermission['key'], 'Site Default Preset endpoint is hidden and permission guarded');
 $check(($navigation['page'] ?? '') === JQRG_ROUTE && ($navigation['parent'] ?? '') === 'tools', 'navigation points to the owned Tools route');
+$check(($settingsNavigation['page'] ?? '') === JQRG_SETTINGS_ROUTE && ($settingsNavigation['parent'] ?? '') === 'tools',
+    'delegated settings managers have a discoverable Tools route');
 $check(($manifest['dependencies']['js'] ?? null) === ['modal-helpers', 'media-selector'], 'Media Gallery dependencies use Core-owned asset IDs');
 $check(isset($GLOBALS['_jqrg_hooks']['admin_head']), 'route-scoped dashboard assets are registered');
 $check(isset($GLOBALS['_jqrg_hooks']['admin_content_row_actions']), 'content row-action integration is registered');
@@ -79,6 +93,23 @@ $check(isset($GLOBALS['_jqrg_hooks']['admin_category_row_actions']), 'category r
 $check(isset($GLOBALS['_jqrg_hooks']['admin_asset_detail_actions']), 'asset detail integration is registered');
 
 $pdo = new PDO('sqlite::memory:');
+$check(jqrg_action_settings($pdo) === jqrg_action_setting_defaults(), 'missing global settings preserve every existing QR action');
+$GLOBALS['_jqrg_settings'][JQRG_SETTINGS_SETTING] = '{broken';
+$check(jqrg_action_settings($pdo) === jqrg_action_setting_defaults(), 'malformed global settings fail open to backward-compatible action defaults');
+$GLOBALS['_jqrg_settings'][JQRG_SETTINGS_SETTING] = json_encode([
+    'schema' => 1,
+    'actions' => ['post' => false, 'page' => true, 'theme_content' => '0', 'unknown' => false],
+], JSON_THROW_ON_ERROR);
+$parsedActionSettings = jqrg_action_settings($pdo);
+$check($parsedActionSettings['post'] === false && $parsedActionSettings['page'] === true
+    && $parsedActionSettings['theme_content'] === true && $parsedActionSettings['category'] === true,
+    'global settings accept only known strict booleans and retain defaults for missing or malformed flags');
+$check(jqrg_save_action_settings($pdo, ['post' => '1', 'media' => '1'])
+    && jqrg_action_settings($pdo) === [
+        'post' => true, 'page' => false, 'theme_content' => false,
+        'category' => false, 'media' => true, 'file' => false,
+    ], 'global settings save all six action flags atomically');
+$GLOBALS['_jqrg_settings'] = [];
 $items = jqrg_content_row_actions([], ['title' => 'Public article'], [
     'content_type' => 'article', 'actor_id' => 7, 'status' => 'published', 'is_public' => true, 'public_url' => '/article/',
 ], $pdo);
@@ -95,6 +126,18 @@ $scheduledItems = jqrg_content_row_actions([], ['title' => 'Scheduled Theme Cont
 ], $pdo);
 $check(count($privateItems) === 1 && count($scheduledItems) === 1,
     'private and scheduled content receive QR actions for their canonical paths');
+$GLOBALS['_jqrg_settings'][JQRG_SETTINGS_SETTING] = json_encode([
+    'schema' => 1,
+    'actions' => ['post' => false, 'page' => true, 'theme_content' => false, 'category' => true, 'media' => true, 'file' => true],
+], JSON_THROW_ON_ERROR);
+$check(jqrg_content_row_actions([], ['title' => 'Disabled article'], [
+    'content_type' => 'article', 'actor_id' => 7, 'status' => 'published', 'public_url' => '/article/',
+], $pdo) === [] && count(jqrg_content_row_actions([], ['title' => 'Enabled page'], [
+    'content_type' => 'page', 'actor_id' => 7, 'status' => 'published', 'public_url' => '/page/',
+], $pdo)) === 1 && jqrg_content_row_actions([], ['title' => 'Disabled theme'], [
+    'content_type' => 'theme', 'actor_id' => 7, 'status' => 'published', 'public_url' => '/theme/',
+], $pdo) === [], 'Post, Page, and Theme Content toggles are enforced independently on the shared content hook');
+$GLOBALS['_jqrg_settings'] = [];
 $check(jqrg_public_path('//evil.test/') === null && jqrg_public_path('https://evil.test/') === null
     && jqrg_public_path('/safe/%252e%252e/admin/') === null
     && jqrg_public_path('/%252f%252fevil.test/') === null
@@ -130,6 +173,14 @@ $fallbackCategoryAction = (string)ob_get_clean();
 $check(!str_contains($fallbackCategoryAction, 'muted-divider')
     && str_contains($fallbackCategoryAction, '#jqrg_url=%2Fcategory%2Fcanonical-child%2F'),
     'category actions use the canonical permalink fallback without a leading separator');
+$GLOBALS['_jqrg_settings'][JQRG_SETTINGS_SETTING] = json_encode([
+    'schema' => 1,
+    'actions' => ['post' => true, 'page' => true, 'theme_content' => true, 'category' => false, 'media' => true, 'file' => true],
+], JSON_THROW_ON_ERROR);
+ob_start();
+jqrg_category_row_actions(['name' => 'Disabled', 'display_url' => '/category/disabled/'], ['actor_id' => 7, 'can_update' => true], $pdo);
+$check(ob_get_clean() === '', 'disabled Category actions emit neither a link nor a divider');
+$GLOBALS['_jqrg_settings'] = [];
 $GLOBALS['_jqrg_category_permalink'] = '//unsafe.test/';
 ob_start();
 jqrg_category_row_actions(['name' => 'Unsafe'], ['actor_id' => 7, 'can_update' => false], $pdo);
@@ -160,6 +211,20 @@ $check(count($assetItems) === 1
     && ($assetItems[0]['key'] ?? '') === 'qr-code-generator.create'
     && str_contains((string)($assetItems[0]['url'] ?? ''), '#jqrg_url=%2Fstatic%2Fimg%2Fimage.jpg'),
     'public Media detail receives a browser-only prefilled QR action');
+$GLOBALS['_jqrg_settings'][JQRG_SETTINGS_SETTING] = json_encode([
+    'schema' => 1,
+    'actions' => ['post' => true, 'page' => true, 'theme_content' => true, 'category' => true, 'media' => false, 'file' => true],
+], JSON_THROW_ON_ERROR);
+$check(jqrg_asset_detail_actions([], [
+    'schema' => 1, 'resource' => 'media', 'surface' => 'admin.media.modal.detail', 'actor_id' => 7,
+    'is_public' => true, 'visibility' => 'public', 'storage_disk' => 'public', 'access_scope' => 'public',
+    'public_url' => '/static/img/disabled.jpg',
+], $pdo) === [] && count(jqrg_asset_detail_actions([], [
+    'schema' => 1, 'resource' => 'file', 'surface' => 'admin.file.modal.detail', 'actor_id' => 7,
+    'is_public' => true, 'visibility' => 'public', 'storage_disk' => 'public', 'access_scope' => 'public',
+    'public_url' => '/static/files/enabled.pdf',
+], $pdo)) === 1, 'Media and File toggles are enforced independently on the shared asset hook');
+$GLOBALS['_jqrg_settings'] = [];
 foreach (['visibility', 'storage_disk', 'access_scope'] as $restrictedField) {
     $context = [
         'schema' => 1, 'resource' => 'file', 'surface' => 'admin.file.modal.detail', 'actor_id' => 7,
@@ -191,6 +256,22 @@ $check(str_contains($ownedAssets, '/static/plugins/qr-code-generator/admin.css?v
     && str_contains($ownedAssets, '/static/plugins/qr-code-generator/qrcode.js?v=' . JQRG_VERSION)
     && str_contains($ownedAssets, '/static/plugins/qr-code-generator/admin.js?v=' . JQRG_VERSION)
     && str_contains($ownedAssets, 'JQRG_CONFIG'), 'owned route loads each versioned static asset and bounded configuration');
+$_GET['page'] = JQRG_SETTINGS_ROUTE;
+$GLOBALS['_jqrg_can_generate'] = false;
+ob_start();
+jqrg_admin_assets();
+$settingsAssets = (string)ob_get_clean();
+$check(str_contains($settingsAssets, '/static/plugins/qr-code-generator/admin.css?v=' . JQRG_VERSION)
+    && !str_contains($settingsAssets, 'JQRG_CONFIG')
+    && !str_contains($settingsAssets, 'quick.js?v=')
+    && !str_contains($settingsAssets, 'qrcode.js?v=')
+    && !str_contains($settingsAssets, 'admin.js?v='), 'settings managers receive styling without generator or quick runtimes');
+$GLOBALS['_jqrg_can_manage'] = false;
+ob_start();
+jqrg_admin_assets();
+$check(ob_get_clean() === '', 'settings assets require the dedicated management permission');
+$GLOBALS['_jqrg_can_generate'] = true;
+$GLOBALS['_jqrg_can_manage'] = true;
 $_GET['page'] = 'admin/tools/another-plugin';
 ob_start();
 jqrg_admin_assets();
@@ -238,11 +319,19 @@ $check(count($staticSources) === count(array_unique($staticSources)), 'static so
 $check(hash_file('sha256', $root . '/assets/vendor/qrcode.js') === '1d24c1c0679d1f406bc0eaeeb79d908681775e42597142214e7fe73261e6eb04', 'vendored encoder matches the reviewed local checksum');
 
 $adminSource = (string)file_get_contents($root . '/admin/index.php');
+$settingsSource = (string)file_get_contents($root . '/admin/settings.php');
 $presetEndpoint = (string)file_get_contents($root . '/admin/default-preset.php');
 $browserSource = (string)file_get_contents($root . '/assets/js/admin.js');
 $quickSource = (string)file_get_contents($root . '/assets/js/quick.js');
 $quickStyles = (string)file_get_contents($root . '/assets/css/quick.css');
 $check(str_contains($adminSource, "adiwira_require_permission(\$pdo, 'plugin.qr-code-generator.codes.generate', false)"), 'dashboard page enforces permission server-side');
+$check(str_contains($settingsSource, "adiwira_require_permission(\$pdo, 'plugin.qr-code-generator.presets.manage', false)")
+    && str_contains($settingsSource, 'adiwira_csrf_validate(')
+    && str_contains($settingsSource, 'jqrg_save_action_settings(')
+    && str_contains($settingsSource, 'data-unsaved-guard')
+    && str_contains($settingsSource, 'name="actions[<?= jqrg_h($key) ?>]"')
+    && count(jqrg_action_setting_defaults()) === 6,
+    'global settings page is permission guarded, CSRF protected, and renders six bounded toggles');
 $check(substr_count($adminSource, 'role="tooltip"') === 6
     && str_contains($adminSource, 'id="jqrg-type-help"')
     && str_contains($browserSource, "messages.typeHelp[type.value]"), 'accessible tooltips and contextual payload guidance are wired');
@@ -284,21 +373,26 @@ $check(str_contains($quickSource, "url.hash.startsWith('#jqrg_url=')")
     && str_contains($quickSource, 'shareSequence === modalSequence')
     && str_contains($quickSource, 'node.inert = true')
     && str_contains($quickSource, 'restoreBackground()')
+    && str_contains($quickSource, 'event.stopImmediatePropagation()')
+    && preg_match('/document\.addEventListener\(\'keydown\'.*?\}, true\);/s', $quickSource) === 1
     && str_contains($quickSource, "role=\"dialog\"")
     && !preg_match('/\b(?:fetch|XMLHttpRequest|sendBeacon|WebSocket)\s*\(/', $quickSource), 'quick modal generates locally with image sharing and URL-copy fallback');
+$check(preg_match('/\.jqrg-quick\s*\{[^}]*z-index:\s*([0-9]+)/', $quickStyles, $quickZIndex) === 1
+    && (int)$quickZIndex[1] > 99999, 'quick modal stacks above Core asset detail modals');
 $check(str_contains($quickStyles, 'page=admin%2Ftools%2Fqr-code-generator')
     && substr_count($quickStyles, '/static/plugins/qr-code-generator/qr-code.svg') === 4
     && str_contains($quickStyles, '.asset-detail-extension-action[href*="page=admin%2Ftools%2Fqr-code-generator"]::before'),
     'content, category, and asset QR actions use the plugin-owned line icon');
 $check(strpos($browserSource, 'if (requestSequence !== generationSequence) return;')
     < strpos($browserSource, 'centerImageThumbnail.src = centerAsset.dataUrl'), 'stale image trimming cannot overwrite the current thumbnail');
-$check(str_contains($presetEndpoint, "adiwira_csrf_validate(")
+$check(str_contains($presetEndpoint, "adiwira_require_permission(\$pdo, 'plugin.qr-code-generator.presets.manage', false)")
+    && str_contains($presetEndpoint, "adiwira_csrf_validate(")
     && str_contains($presetEndpoint, 'settings_set($pdo, JQRG_DEFAULT_PRESET_SETTING')
     && !str_contains($presetEndpoint, 'public_url'), 'Site Default Preset endpoint is CSRF protected and stores visual settings only');
 $check(!isset($manifest['migrations']) && !isset($manifest['frontend']), 'plugin declares no database migrations or frontend routes');
 
 $translationSources = [];
-foreach (['plugin.php', 'admin/index.php', 'admin/default-preset.php'] as $relative) {
+foreach (['plugin.php', 'admin/index.php', 'admin/settings.php', 'admin/default-preset.php'] as $relative) {
     $source = (string)file_get_contents($root . '/' . $relative);
     preg_match_all("/jqrg_t\\('((?:[^'\\\\]|\\\\.)*)'/", $source, $matches);
     foreach ($matches[1] ?? [] as $message) $translationSources[stripcslashes($message)] = true;

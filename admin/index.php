@@ -13,6 +13,7 @@ $actorId = (int)($_SESSION['user_id'] ?? 0);
 $siteDefaultPreset = jqrg_site_default_preset($pdo);
 $canManageDefaultPreset = $actorId > 0 && function_exists('user_can')
     && user_can($pdo, $actorId, 'plugin.qr-code-generator.presets.manage');
+$settingsUrl = rtrim((string)ADMIN_BASE_PATH, '/') . '/?' . http_build_query(['page' => JQRG_SETTINGS_ROUTE], '', '&', PHP_QUERY_RFC3986);
 
 $messages = [
     'empty' => jqrg_t('Enter content before generating a QR code.'),
@@ -129,9 +130,14 @@ $messages = [
       </div>
       <div class="jqrg-presets">
         <div class="jqrg-presets__head"><strong><?= jqrg_h(jqrg_t('Visual presets')) ?></strong><small><?= jqrg_h(jqrg_t('Presets include only visual settings. Payloads and selected images are never saved.')) ?></small></div>
-        <div class="jqrg-site-default">
+        <div class="jqrg-site-default" id="jqrg-site-default-settings">
           <span><?= jqrg_h(jqrg_t('Site Default Preset')) ?>: <strong id="jqrg-site-default-name"><?= jqrg_h((string)$siteDefaultPreset['name']) ?></strong></span>
-          <?php if ($canManageDefaultPreset): ?><button id="jqrg-site-default-save" type="button"><?= jqrg_h(jqrg_t('Use as site default')) ?></button><?php endif; ?>
+          <?php if ($canManageDefaultPreset): ?>
+            <span class="jqrg-site-default__actions">
+              <button id="jqrg-site-default-save" type="button"><?= jqrg_h(jqrg_t('Use as site default')) ?></button>
+              <a href="<?= jqrg_h($settingsUrl) ?>"><?= jqrg_h(jqrg_t('Global settings')) ?></a>
+            </span>
+          <?php endif; ?>
         </div>
         <div class="jqrg-presets__apply">
           <select id="jqrg-preset-select" aria-label="<?= jqrg_h(jqrg_t('Visual preset')) ?>">

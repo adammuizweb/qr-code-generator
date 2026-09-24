@@ -5,6 +5,7 @@ if (!defined('DASHBOARD_CONTEXT')) exit;
 
 $pdo = $GLOBALS['pdo'] ?? null;
 if (!$pdo instanceof PDO) adiwira_json(['success' => false, 'error' => jqrg_t('Database connection is unavailable.')], 500);
+adiwira_require_permission($pdo, 'plugin.qr-code-generator.presets.manage', false);
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') adiwira_json(['success' => false, 'error' => jqrg_t('Method not allowed.')], 405);
 
 $raw = (string)file_get_contents('php://input');

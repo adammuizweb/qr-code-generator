@@ -1,5 +1,5 @@
 .jqrg-quick[hidden] { display: none !important; }
-.jqrg-quick { position: fixed; z-index: 10050; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgba(8, 15, 29, .72); backdrop-filter: blur(8px); }
+.jqrg-quick { position: fixed; z-index: 100001; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgba(8, 15, 29, .72); backdrop-filter: blur(8px); }
 .jqrg-quick__panel { position: relative; width: min(430px, 100%); padding: 1.4rem; overflow: hidden; border: 1px solid rgba(34, 211, 238, .28); border-radius: 20px; color: var(--adam-text, #102033); background: var(--adam-card, #fff); box-shadow: 0 30px 90px rgba(2, 8, 23, .38); }
 .jqrg-quick__panel::before { content: ''; position: absolute; width: 180px; height: 180px; top: -105px; right: -80px; border: 22px solid rgba(14, 116, 144, .1); border-radius: 50%; pointer-events: none; }
 .jqrg-quick__close { position: absolute; z-index: 1; top: .8rem; right: .8rem; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--adam-border, #cbd5e1); border-radius: 50%; color: var(--adam-muted, #64748b); background: transparent; font: 400 1.4rem/1 sans-serif; cursor: pointer; }

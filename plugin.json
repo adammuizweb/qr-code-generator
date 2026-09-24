@@ -1,6 +1,6 @@
 {
   "name": "qr-code-generator",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "title": "QR Code Generator",
   "description": "Create downloadable QR codes for text, links, email, phone, SMS, and Wi-Fi without sending payloads to an external service.",
   "author": "Adam Muiz",
@@ -30,7 +30,7 @@
     },
     {
       "key": "plugin.qr-code-generator.presets.manage",
-      "label": "Manage QR Site Default Preset",
+      "label": "Manage QR Code Generator Settings",
       "supports_scope": false,
       "default_roles": ["admin"],
       "delegable": true
@@ -43,6 +43,14 @@
         "file": "admin/index.php",
         "title": "QR Code Generator",
         "permission": "plugin.qr-code-generator.codes.generate",
+        "roles": ["admin"]
+      },
+      {
+        "route": "admin/tools/qr-code-generator/settings",
+        "file": "admin/settings.php",
+        "title": "QR Code Generator Settings",
+        "hidden": true,
+        "permission": "plugin.qr-code-generator.presets.manage",
         "roles": ["admin"]
       },
       {
@@ -59,6 +67,13 @@
         "label": "QR Code Generator",
         "icon": "code",
         "page": "admin/tools/qr-code-generator",
+        "parent": "tools",
+        "roles": ["admin"]
+      },
+      {
+        "label": "QR Settings",
+        "icon": "settings",
+        "page": "admin/tools/qr-code-generator/settings",
         "parent": "tools",
         "roles": ["admin"]
       }
