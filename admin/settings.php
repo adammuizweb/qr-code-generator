@@ -45,7 +45,7 @@ $actionLabels = [
       <h1><?= jqrg_h(jqrg_t('QR Code Generator Settings')) ?></h1>
       <p><?= jqrg_h(jqrg_t('Choose where authorized dashboard users can open quick QR actions.')) ?></p>
     </div>
-    <?php if ($canGenerate): ?><a class="jqrg-hero-link" href="<?= jqrg_h($generatorUrl) ?>"><?= jqrg_h(jqrg_t('Back to generator')) ?></a><?php endif; ?>
+    <?php if ($canGenerate): ?><a class="jqrg-hero-link" href="<?= jqrg_h($generatorUrl) ?>"><?= svg_ico('arrow-left') ?><span><?= jqrg_h(jqrg_t('Back to generator')) ?></span></a><?php endif; ?>
   </header>
 
   <?php if ($error !== ''): ?><div class="jqrg-settings-notice is-error" role="alert"><?= jqrg_h($error) ?></div><?php endif; ?>

@@ -337,8 +337,9 @@ $check(str_contains($settingsSource, "adiwira_require_permission(\$pdo, 'plugin.
     && str_contains($settingsSource, 'jqrg_save_action_settings(')
     && str_contains($settingsSource, 'data-unsaved-guard')
     && str_contains($settingsSource, 'name="actions[<?= jqrg_h($key) ?>]"')
+    && str_contains($settingsSource, "svg_ico('arrow-left')")
     && count(jqrg_action_setting_defaults()) === 6,
-    'global settings page is permission guarded, CSRF protected, and renders six bounded toggles');
+    'global settings page is permission guarded, CSRF protected, renders six bounded toggles, and uses the Core back icon');
 $check(substr_count($adminSource, 'role="tooltip"') === 6
     && str_contains($adminSource, 'id="jqrg-type-help"')
     && str_contains($browserSource, "messages.typeHelp[type.value]"), 'accessible tooltips and contextual payload guidance are wired');
