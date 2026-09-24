@@ -36,7 +36,7 @@ Custom presets are optional and stored in the current browser. They contain visu
 ```bash
 php tests/contract.php
 node tests/generator.test.js
-php tools/build-package.php /tmp/qr-code-generator-0.8.1.zip
+php tools/build-package.php /tmp/qr-code-generator-0.8.2.zip
 ```
 
 Run PHP and JavaScript syntax checks before packaging:

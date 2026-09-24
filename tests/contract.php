@@ -322,9 +322,13 @@ $presetEndpoint = (string)file_get_contents($root . '/admin/default-preset.php')
 $browserSource = (string)file_get_contents($root . '/assets/js/admin.js');
 $quickSource = (string)file_get_contents($root . '/assets/js/quick.js');
 $quickStyles = (string)file_get_contents($root . '/assets/css/quick.css');
+$adminStyles = (string)file_get_contents($root . '/assets/css/admin.css');
 $check(str_contains($adminSource, "adiwira_require_permission(\$pdo, 'plugin.qr-code-generator.codes.generate', false)"), 'dashboard page enforces permission server-side');
 $check(str_contains($adminSource, 'class="jqrg-hero-link"')
     && str_contains($adminSource, 'JQRG_SETTINGS_ROUTE'), 'generator main page exposes the permission-aware settings button');
+$check(preg_match('/\.jqrg-hero__actions\s*\{[^}]*flex-direction:\s*column/s', $adminStyles) === 1
+    && preg_match('/\.jqrg-hero-link:hover[^}]*color:\s*#082f49[^}]*background:\s*#cffafe/s', $adminStyles) === 1,
+    'generator settings button sits above the privacy seal with explicit hover contrast');
 $check(str_contains($settingsSource, "adiwira_require_permission(\$pdo, 'plugin.qr-code-generator.presets.manage', false)")
     && str_contains($settingsSource, 'adiwira_csrf_validate(')
     && str_contains($settingsSource, 'jqrg_save_action_settings(')
