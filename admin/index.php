@@ -66,7 +66,7 @@ $messages = [
       <p><?= jqrg_h(jqrg_t('Turn useful information into a scan-ready code without sending the payload outside this browser.')) ?></p>
     </div>
     <div class="jqrg-hero__actions">
-      <?php if ($canManageDefaultPreset): ?><a class="jqrg-hero-link" href="<?= jqrg_h($settingsUrl) ?>"><?= jqrg_h(jqrg_t('Global settings')) ?></a><?php endif; ?>
+      <?php if ($canManageDefaultPreset): ?><a class="jqrg-hero-link" href="<?= jqrg_h($settingsUrl) ?>"><?= svg_ico('settings') ?><span><?= jqrg_h(jqrg_t('Global settings')) ?></span></a><?php endif; ?>
       <div class="jqrg-privacy-seal" aria-label="<?= jqrg_h(jqrg_t('Privacy status')) ?>">
         <span aria-hidden="true"></span>
         <div><strong><?= jqrg_h(jqrg_t('Private by design')) ?></strong><small><?= jqrg_h(jqrg_t('No upload. No history. No external API.')) ?></small></div>
