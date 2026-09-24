@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 if (!defined('PLUGIN_SYSTEM_LOADED')) return;
 
-const JQRG_VERSION = '0.8.0';
+const JQRG_VERSION = '0.8.1';
 const JQRG_ROUTE = 'admin/tools/qr-code-generator';
 const JQRG_SETTINGS_ROUTE = 'admin/tools/qr-code-generator/settings';
 const JQRG_DEFAULT_PRESET_ROUTE = 'admin/tools/qr-code-generator/default-preset';

@@ -1,6 +1,6 @@
 {
   "name": "qr-code-generator",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "title": "QR Code Generator",
   "description": "Create downloadable QR codes for text, links, email, phone, SMS, and Wi-Fi without sending payloads to an external service.",
   "author": "Adam Muiz",
@@ -67,13 +67,6 @@
         "label": "QR Code Generator",
         "icon": "code",
         "page": "admin/tools/qr-code-generator",
-        "parent": "tools",
-        "roles": ["admin"]
-      },
-      {
-        "label": "QR Settings",
-        "icon": "settings",
-        "page": "admin/tools/qr-code-generator/settings",
         "parent": "tools",
         "roles": ["admin"]
       }

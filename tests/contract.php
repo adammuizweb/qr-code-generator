@@ -66,7 +66,6 @@ $page = $pagesByRoute[JQRG_ROUTE] ?? [];
 $settingsPage = $pagesByRoute[JQRG_SETTINGS_ROUTE] ?? [];
 $presetPage = $pagesByRoute[JQRG_DEFAULT_PRESET_ROUTE] ?? [];
 $navigation = $manifest['admin']['nav'][0] ?? [];
-$settingsNavigation = $manifest['admin']['nav'][1] ?? [];
 $check(($permission['key'] ?? '') === 'plugin.qr-code-generator.codes.generate'
     && ($permission['default_roles'] ?? null) === ['admin']
     && ($permission['delegable'] ?? null) === true, 'generation permission is declared and delegable');
@@ -84,8 +83,7 @@ $check(($presetPage['route'] ?? '') === JQRG_DEFAULT_PRESET_ROUTE
     && ($presetPage['hidden'] ?? null) === true
     && ($presetPage['permission'] ?? '') === $presetPermission['key'], 'Site Default Preset endpoint is hidden and permission guarded');
 $check(($navigation['page'] ?? '') === JQRG_ROUTE && ($navigation['parent'] ?? '') === 'tools', 'navigation points to the owned Tools route');
-$check(($settingsNavigation['page'] ?? '') === JQRG_SETTINGS_ROUTE && ($settingsNavigation['parent'] ?? '') === 'tools',
-    'delegated settings managers have a discoverable Tools route');
+$check(count($manifest['admin']['nav'] ?? []) === 1, 'settings stay out of the Tools aside navigation');
 $check(($manifest['dependencies']['js'] ?? null) === ['modal-helpers', 'media-selector'], 'Media Gallery dependencies use Core-owned asset IDs');
 $check(isset($GLOBALS['_jqrg_hooks']['admin_head']), 'route-scoped dashboard assets are registered');
 $check(isset($GLOBALS['_jqrg_hooks']['admin_content_row_actions']), 'content row-action integration is registered');
@@ -325,6 +323,8 @@ $browserSource = (string)file_get_contents($root . '/assets/js/admin.js');
 $quickSource = (string)file_get_contents($root . '/assets/js/quick.js');
 $quickStyles = (string)file_get_contents($root . '/assets/css/quick.css');
 $check(str_contains($adminSource, "adiwira_require_permission(\$pdo, 'plugin.qr-code-generator.codes.generate', false)"), 'dashboard page enforces permission server-side');
+$check(str_contains($adminSource, 'class="jqrg-hero-link"')
+    && str_contains($adminSource, 'JQRG_SETTINGS_ROUTE'), 'generator main page exposes the permission-aware settings button');
 $check(str_contains($settingsSource, "adiwira_require_permission(\$pdo, 'plugin.qr-code-generator.presets.manage', false)")
     && str_contains($settingsSource, 'adiwira_csrf_validate(')
     && str_contains($settingsSource, 'jqrg_save_action_settings(')

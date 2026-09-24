@@ -65,9 +65,12 @@ $messages = [
       <h1><?= jqrg_h(jqrg_t('QR Code Generator')) ?></h1>
       <p><?= jqrg_h(jqrg_t('Turn useful information into a scan-ready code without sending the payload outside this browser.')) ?></p>
     </div>
-    <div class="jqrg-privacy-seal" aria-label="<?= jqrg_h(jqrg_t('Privacy status')) ?>">
-      <span aria-hidden="true"></span>
-      <div><strong><?= jqrg_h(jqrg_t('Private by design')) ?></strong><small><?= jqrg_h(jqrg_t('No upload. No history. No external API.')) ?></small></div>
+    <div class="jqrg-hero__actions">
+      <?php if ($canManageDefaultPreset): ?><a class="jqrg-hero-link" href="<?= jqrg_h($settingsUrl) ?>"><?= jqrg_h(jqrg_t('Global settings')) ?></a><?php endif; ?>
+      <div class="jqrg-privacy-seal" aria-label="<?= jqrg_h(jqrg_t('Privacy status')) ?>">
+        <span aria-hidden="true"></span>
+        <div><strong><?= jqrg_h(jqrg_t('Private by design')) ?></strong><small><?= jqrg_h(jqrg_t('No upload. No history. No external API.')) ?></small></div>
+      </div>
     </div>
   </header>
 
@@ -132,12 +135,7 @@ $messages = [
         <div class="jqrg-presets__head"><strong><?= jqrg_h(jqrg_t('Visual presets')) ?></strong><small><?= jqrg_h(jqrg_t('Presets include only visual settings. Payloads and selected images are never saved.')) ?></small></div>
         <div class="jqrg-site-default" id="jqrg-site-default-settings">
           <span><?= jqrg_h(jqrg_t('Site Default Preset')) ?>: <strong id="jqrg-site-default-name"><?= jqrg_h((string)$siteDefaultPreset['name']) ?></strong></span>
-          <?php if ($canManageDefaultPreset): ?>
-            <span class="jqrg-site-default__actions">
-              <button id="jqrg-site-default-save" type="button"><?= jqrg_h(jqrg_t('Use as site default')) ?></button>
-              <a href="<?= jqrg_h($settingsUrl) ?>"><?= jqrg_h(jqrg_t('Global settings')) ?></a>
-            </span>
-          <?php endif; ?>
+          <?php if ($canManageDefaultPreset): ?><button id="jqrg-site-default-save" type="button"><?= jqrg_h(jqrg_t('Use as site default')) ?></button><?php endif; ?>
         </div>
         <div class="jqrg-presets__apply">
           <select id="jqrg-preset-select" aria-label="<?= jqrg_h(jqrg_t('Visual preset')) ?>">
